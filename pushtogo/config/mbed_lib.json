@@ -12,11 +12,11 @@
         },
         "reduction_factor": {
             "help": "Total reduction from motor to the telescope axis. This value should be the number of worm teeth times the gearbox reduction ratio if applicable.",
-            "value": "180.0f"
+            "value": "180.0"
         },
         "max_speed": {
             "help": "Max speed that the motor allows (in deg/s). If you find the motor fails to follow (and/or lose steps), drop this value",
-            "value": "6.0f"
+            "value": "6.0"
         },
         
         
@@ -25,23 +25,23 @@
         "GOTO_BEHAVIORS" : "The following settings control some details in the way that Go-To is implemented. Tweak as necessary.",
         "acceleration_step_time": {
             "help": "Time increments in axis acceleration. Unit: second",
-            "value": "0.1f"
+            "value": "0.1"
         },
         "min_slew_angle": {
             "help": "Minimum slew angle. Angles below this value will be reached by correction steps (i.e. no accel/deceleration)",
-            "value": "0.3f"
+            "value": "0.3"
         },
         "correction_tolerance": {
             "help": "Tolerance for GoTo pointing corrections in degrees. Default to 0.05 (3 arcmin)",
-            "value": "0.05f"
+            "value": "0.05"
         },
         "min_correction_time": {
             "help": "Minimum time of the pointing correction. If the correction requires less than this value, it will be ignored",
-            "value": "0.005f"
+            "value": "0.005"
         },
         "max_correction_angle": {
             "help": "Maximum allowed correction angle. If this angle is exceeded, it means there is something wrong with the mount, either the motor is jamed or encoder is broken",
-            "value": "5.0f"
+            "value": "5.0"
         },
         "update_angle_period": {
             "help": "Timeout for updating the axis position when idle. In milliseconds",
@@ -49,7 +49,7 @@
         },
         "max_guide_time": {
             "help": "Maximum guiding time",
-            "value": "5.0f"
+            "value": "5.0"
         }
     }
 }

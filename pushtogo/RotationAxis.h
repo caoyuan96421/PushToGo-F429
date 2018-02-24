@@ -14,6 +14,27 @@
 
 static const float sidereal_speed = 0.00417807462f; /* deg / s */
 
+/**
+* status of the Axis object
+*/
+typedef enum {
+    AXIS_STOPPED = 0,
+    AXIS_ACCELERATING,
+    AXIS_DECELERATING,
+    AXIS_SLEWING,
+    AXIS_SLEWING_CONTINUOUS,
+    AXIS_TRACKING,
+    AXIS_CORRECTING
+} axisstatus_t;
+
+/** Define the rotation direction
+ * AXIS_ROTATE_POSITIVE: +angle
+ * AXIS_ROTATE_NEGATIVE: -angle
+ */
+typedef enum {
+    AXIS_ROTATE_POSITIVE = 0, AXIS_ROTATE_NEGATIVE = 1
+} axisrotdir_t;
+
 /** General Rotating Axis class
 * Handles low-level stepper timing, calculates the speed and distance to rotate
 * API provides comprehensive slewing, tracking and guiding.
@@ -21,26 +42,6 @@ static const float sidereal_speed = 0.00417807462f; /* deg / s */
 class RotationAxis
 {
 public:
-    /**
-    * status of the Axis object
-    */
-    typedef enum {
-        AXIS_STOPPED = 0,
-        AXIS_ACCELERATING,
-        AXIS_DECELERATING,
-        AXIS_SLEWING,
-        AXIS_SLEWING_CONTINUOUS,
-        AXIS_TRACKING,
-        AXIS_CORRECTING
-    } axisstatus_t;
-
-    /** Define the rotation direction
-     * AXIS_ROTATE_POSITIVE: +angle
-     * AXIS_ROTATE_NEGATIVE: -angle
-     */
-    typedef enum {
-        AXIS_ROTATE_POSITIVE = 0, AXIS_ROTATE_NEGATIVE = 1
-    } axisrotdir_t;
 
     /**
     * Create a RotationAxis object
@@ -100,6 +101,30 @@ public:
 
         return false;
     }
+
+    bool starSlewTo(axisrotdir_t dir, float angleDeg) {
+         msg_t *message = task_pool.alloc();
+         if (!message) {
+             fprintf(stderr, "Axis: out of memory");
+             return true;
+         }
+         message->signal = msg_t::SIGNAL_SLEW_TO;
+         message->value = angleDeg;
+         message->dir = dir;
+         message->tid = Thread::gettid();
+         if (task_queue.put(message) != osOK) {
+             fprintf(stderr, "Axis: failed to queue the operation");
+             task_pool.free(message);
+             return true;
+         }
+         /*Wait for the specified action to finish*/
+         Thread::signal_clr(0x7FFFFFFF);
+         Thread::signal_wait(0);
+
+         return false;
+     }
+
+
 
     /** Perform a continuous slewing, until stop() is called
     * @param dir Direction to start continuous slewing

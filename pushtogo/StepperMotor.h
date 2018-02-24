@@ -32,23 +32,18 @@ public:
 	virtual void start(stepdir_t dir) = 0;
 	virtual void stop() = 0;
 
-	/**
-	 * Set stepping period. Returns the actual period set (the error may be significant to affect GoTo accuracy
+
+	/*Get the fractional step count. */
+	virtual double getStepCount() = 0;
+
+
+	virtual void setStepCount(double) = 0;
+
+	/** Set frequency of the stepping. In unit of full steps per second
+	 * @param freq Target frequency
+	 * @return Actual frequency been set to
 	 */
-	virtual float setPeriod(float period) = 0;
-
-	virtual int64_t getStepCount() = 0;
-
-	virtual void setStepCount(int64_t) = 0;
-
-	/*Set frequency of the stepping*/
-	float setFrequency(float freq)
-	{
-		if (freq > 0)
-			return 1.0f/setPeriod(1.0f / freq);
-		else
-			return 0;
-	}
+	double setFrequency(double freq);
 
 };
 

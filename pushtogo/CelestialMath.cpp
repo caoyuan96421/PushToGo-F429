@@ -10,8 +10,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void xprintf(const char *, ...);
-
 static inline double clamp(double x) {
 	return (x > 1) ? 1 : ((x < -1) ? -1 : x);
 }
@@ -23,7 +21,7 @@ static inline double clamp(double x) {
 #define MAX_ITERATION 30
 #define MAX_ITERATION_OPTIMIZATION 10
 
-static const double tol = 1e-7;
+static const double tol = 1e-10;
 static const double delta = 1e-7;
 
 static const double RADIAN = 180.0 / M_PI;
@@ -110,6 +108,33 @@ LocalEquatorialCoordinates CelestialMath::applyConeError(const LocalEquatorialCo
 			a.ha - asin(clamp(tan(a.dec * DEGREE) * tan(cone * DEGREE))) * RADIAN);
 }
 
+MountCoordinates CelestialMath::localEquatorialToMount(const LocalEquatorialCoordinates& a, pierside_t side) {
+	MountCoordinates m;
+	double ha = a.ha;
+	if (side == PIER_SIDE_WEST || (side == PIER_SIDE_AUTO && (ha = remainder(a.ha, 360.0)) > 0)) {
+		m.side = PIER_SIDE_WEST;
+		m.dec_delta = 90.0 - a.dec; // dec_delta > 0
+		m.ra_delta = ha - 90.0;
+	} else {
+		m.side = PIER_SIDE_EAST;
+		m.dec_delta = a.dec - 90; // dec_delta<0
+		m.ra_delta = ha + 90.0;
+	}
+	return m;
+}
+
+LocalEquatorialCoordinates CelestialMath::mountToLocalEquatorial(const MountCoordinates& m) {
+	LocalEquatorialCoordinates a;
+	if (m.side == PIER_SIDE_WEST) {
+		a.ha = m.ra_delta + 90.0;
+		a.dec = 90.0 - m.dec_delta;
+	} else {
+		a.ha = m.ra_delta - 90;
+		a.dec = 90.0 + m.dec_delta;
+	}
+	return a;
+}
+
 AzimuthalCoordinates CelestialMath::alignOneStars(const LocalEquatorialCoordinates &star_ref, const LocalEquatorialCoordinates &star_meas,
 		const LocationCoordinates& loc, const AzimuthalCoordinates &pa_start) {
 	AzimuthalCoordinates pa = pa_start;
@@ -148,14 +173,20 @@ AzimuthalCoordinates CelestialMath::alignOneStars(const LocalEquatorialCoordinat
 		pa.azi += dp2 * delta;
 
 		diff = sqrt(dp1 * dp1 + dp2 * dp2) * delta; // calculate the difference
-		xprintf("Iteration %i, %f\t%f\tdiff=%f\t %e, %e, %e, %e\n", i, pa.alt, pa.azi, diff, j11, j12, j21, j22);
+		printf("Iteration %i, %f\t%f\tdiff=%f\t %e, %e, %e, %e\n", i, pa.alt, pa.azi, diff, j11, j12, j21, j22);
 	}
 	if (diverge) {
 		/// Do something
-		xprintf("Diverge\n");
+		printf("Diverge\n");
 	}
-	xprintf("Final delta: %.2e\n", diff);
+	printf("Final delta: %.2e\n", diff);
 	return pa;
+}
+
+IndexOffset CelestialMath::alignOneStarForOffset(const LocalEquatorialCoordinates& star_ref, const MountCoordinates& star_meas) {
+	// Convert the reference star to Mount coordinates using the same pier side setting
+	MountCoordinates star = localEquatorialToMount(star_ref, star_meas.side);
+	return IndexOffset(star_meas.dec_delta - star.dec_delta, star_meas.ra_delta - star.ra_delta);
 }
 
 void CelestialMath::alignTwoStars(const LocalEquatorialCoordinates star_ref[], const LocalEquatorialCoordinates star_meas[], const LocationCoordinates& loc,
@@ -223,13 +254,92 @@ void CelestialMath::alignTwoStars(const LocalEquatorialCoordinates star_ref[], c
 		offset.ha += -dp4;
 
 		diff = sqrt(f1 * f1 + f2 * f2 + f3 * f3 + f4 * f4); // calculate the difference
-		xprintf("Iteration %i, %f\t%f\t%f\t%f\tdiff=%f\t %e %e\n", i, pa.alt, pa.azi, offset.dec, offset.ha, diff, det, det * (i11 * i22 - i12 * i21));
+		printf("Iteration %i, %f\t%f\t%f\t%f\tdiff=%f\t %e %e\n", i, pa.alt, pa.azi, offset.dec, offset.ha, diff, det, det * (i11 * i22 - i12 * i21));
 	}
 	if (diverge) {
 		/// Do something
-		xprintf("Diverge\n");
+		printf("Diverge\n");
 	}
-	xprintf("Final delta: %.2e\n", diff);
+	printf("Final delta: %.2e\n", diff);
+}
+
+void CelestialMath::alignTwoStars(const LocalEquatorialCoordinates star_ref[], const MountCoordinates star_meas[], const LocationCoordinates& loc,
+		AzimuthalCoordinates& pa, IndexOffset& offset) {
+	// Initialize the PA and offset
+	pa.alt = loc.lat;
+	pa.azi = 0;
+	offset = IndexOffset(0, 0);
+
+	int i = 0;
+	double residue = 1e10;
+	Transformation t, t1, t2;
+	bool diverge = false;
+
+	while (i++ <= MAX_ITERATION && residue > tol) {
+		getMisalignedPolarAxisTransformation(t, pa, loc);
+		getMisalignedPolarAxisTransformation(t1, AzimuthalCoordinates(pa.alt + delta, pa.azi), loc);
+		getMisalignedPolarAxisTransformation(t2, AzimuthalCoordinates(pa.alt, pa.azi + delta), loc);
+
+		// Transform both starts and add offset
+		MountCoordinates star[2] = { localEquatorialToMount(applyMisalignment(t, star_ref[0]), star_meas[0].side) + offset, localEquatorialToMount(
+				applyMisalignment(t, star_ref[1]), star_meas[1].side) + offset };
+		MountCoordinates star1[2] = { localEquatorialToMount(applyMisalignment(t1, star_ref[0]), star_meas[0].side) + offset, localEquatorialToMount(
+				applyMisalignment(t1, star_ref[1]), star_meas[1].side) + offset };
+		MountCoordinates star2[2] = { localEquatorialToMount(applyMisalignment(t2, star_ref[0]), star_meas[0].side) + offset, localEquatorialToMount(
+				applyMisalignment(t2, star_ref[1]), star_meas[1].side) + offset };
+
+		// Calculate Jacobian matrix. Everything should be divided by delta
+		// The 4x4 matrix has a special structure, it can be blocked as
+		// J1  I
+		// J2  I
+		// Where J1 and J2 are the 2x2 Jacobians as in alignOneStar and I is 2x2 identity matrix
+		// Calculate J1=J
+		double j11 = star1[0].dec_delta - star[0].dec_delta, j12 = star2[0].dec_delta - star[0].dec_delta;
+		double j21 = star1[0].ra_delta - star[0].ra_delta, j22 = star2[0].ra_delta - star[0].ra_delta;
+		// Calculate J2=K
+		double k11 = star1[1].dec_delta - star[1].dec_delta, k12 = star2[1].dec_delta - star[1].dec_delta;
+		double k21 = star1[1].ra_delta - star[1].ra_delta, k22 = star2[1].ra_delta - star[1].ra_delta;
+		double det = (j11 - k11) * (j22 - k22) - (j12 - k12) * (j21 - k21); // det(J) = det(J1-J2)
+		if (det == 0) {
+			diverge = true;
+			break;
+		}
+
+		// Calculate invert of J1-J2
+		double i11 = (j22 - k22) / det, i12 = -(j12 - k12) / det;
+		double i21 = -(j21 - k21) / det, i22 = (j11 - k11) / det;
+		// Calculate J2(J1-J2)^-1
+		double l11 = k11 * i11 + k12 * i21, l12 = k11 * i12 + k12 * i22;
+		double l21 = k21 * i11 + k22 * i21, l22 = k21 * i12 + k22 * i22;
+
+		// Calculate F1, F2, F3, F4
+		double f1 = star[0].dec_delta - star_meas[0].dec_delta;
+		double f2 = star[0].ra_delta - star_meas[0].ra_delta;
+		double f3 = star[1].dec_delta - star_meas[1].dec_delta;
+		double f4 = star[1].ra_delta - star_meas[1].ra_delta;
+
+		// Newton's Method - Calculate J^-1 * F
+		// dp1,2 should be multiplied by delta
+		double dp1 = i11 * f1 + i12 * f2 - i11 * f3 - i12 * f4;
+		double dp2 = i21 * f1 + i22 * f2 - i21 * f3 - i22 * f4;
+		double dp3 = -l11 * f1 - l12 * f2 + (1 + l11) * f3 + l12 * f4;
+		double dp4 = -l21 * f1 - l22 * f2 + l21 * f3 + (1 + l22) * f4;
+
+		// Update the coordinates
+		pa.alt += -dp1 * delta;
+		pa.azi += -dp2 * delta;
+		offset.dec_off += -dp3;
+		offset.ra_off += -dp4;
+
+		residue = sqrt(f1 * f1 + f2 * f2 + f3 * f3 + f4 * f4); // calculate the difference
+		printf("Iteration %i, %f\t%f\t%f\t%f\tdiff=%f\t %e %e\n", i, pa.alt, pa.azi, offset.dec_off, offset.ra_off, residue, det,
+				det * (i11 * i22 - i12 * i21));
+	}
+	if (diverge) {
+		/// Do something
+		printf("Diverge\n");
+	}
+	printf("Final delta: %.2e\n", residue);
 }
 
 static double jac[20][5]; // can maximally hold 10 stars
@@ -369,6 +479,7 @@ void CelestialMath::alignNStars(const int N, const LocalEquatorialCoordinates st
 			f[2 * p + 1] = stars0[p].ha - star_meas[p].ha;
 			newresidue += sqr(f[2 * p]) + sqr(f[2 * p + 1]);
 		}
+		newresidue = sqrt(newresidue);
 		// 4. Matrix multiplication
 		for (p = 0; p < 5; p++) {
 			double s = 0;
@@ -387,14 +498,123 @@ void CelestialMath::alignNStars(const int N, const LocalEquatorialCoordinates st
 		cone += dp[4];
 
 		if (newresidue >= residue - tol) {
-			xprintf("Converged.\n");
+			printf("Converged.\n");
 			break;
 		} else {
 			residue = newresidue;
 		}
-		xprintf("Iteration %i, %f\t%f\t%f\t%f\t%f\tr=%f\n", i, pa.alt, pa.azi, offset.dec, offset.ha, cone, residue);
+		printf("Iteration %i, %f\t%f\t%f\t%f\t%f\tr=%f\n", i, pa.alt, pa.azi, offset.dec, offset.ha, cone, residue);
 	}
 
-	xprintf("Final result: %f\t%f\t%f\t%f\t%f\tr=%f\n", pa.alt, pa.azi, offset.dec, offset.ha, cone, residue);
+	printf("Final result: %f\t%f\t%f\t%f\t%f\tr=%f\n", pa.alt, pa.azi, offset.dec, offset.ha, cone, residue);
 }
 
+static void get_corrected_stars(const int N, MountCoordinates stars[], const LocalEquatorialCoordinates star_ref[], const MountCoordinates star_meas[],
+		const LocationCoordinates& loc, const AzimuthalCoordinates& pa, const IndexOffset& offset, double cone) {
+	static Transformation t;
+	CelestialMath::getMisalignedPolarAxisTransformation(t, pa, loc);
+	for (int i = 0; i < N; i++) {
+		// Misalign, apply cone error, and transform to mount coordinates using the same pier side as in the measured stars
+		stars[i] = CelestialMath::localEquatorialToMount(CelestialMath::applyConeError(CelestialMath::applyMisalignment(t, star_ref[i]), cone),
+				star_meas[i].side) + offset;
+	}
+}
+
+static void fill_jacobian(const int N, const int j, MountCoordinates stars0[], MountCoordinates stars1[], const double &dd) {
+	for (int i = 0; i < N; i++) {
+		jac[i * 2][j] = (stars1[i].dec_delta - stars0[i].dec_delta) / dd;
+		jac[i * 2 + 1][j] = (stars1[i].ra_delta - stars0[i].ra_delta) / dd;
+	}
+}
+
+void CelestialMath::alignNStars(const int N, const LocalEquatorialCoordinates star_ref[], const MountCoordinates star_meas[], const LocationCoordinates& loc,
+		AzimuthalCoordinates& pa, IndexOffset& offset, double& cone) {
+	if (N == 2) {
+		alignTwoStars(star_ref, star_meas, loc, pa, offset);
+		cone = 0;
+		return;
+	}
+	if (N <= 1) {
+		return;
+	}
+
+	// Assuming the cone error is not huge, we should be fairly close to the local minimum
+	int i = 0;
+	double residue = 1e10;
+	MountCoordinates stars0[N], stars1[N];
+	double dp[5];
+	double f[20];
+
+	while (i++ < MAX_ITERATION_OPTIMIZATION && residue > tol) {
+		// Calulate Jacobian
+		get_corrected_stars(N, stars0, star_ref, star_meas, loc, pa, offset, cone);
+		/*Vary pa.alt*/
+		get_corrected_stars(N, stars1, star_ref, star_meas, loc, AzimuthalCoordinates(pa.alt + delta, pa.azi), offset, cone);
+		fill_jacobian(N, 0, stars0, stars1, delta);
+		/*Vary pa.azi*/
+		get_corrected_stars(N, stars1, star_ref, star_meas, loc, AzimuthalCoordinates(pa.alt, pa.azi + delta), offset, cone);
+		fill_jacobian(N, 1, stars0, stars1, delta);
+		/*Vary offset.dec*/
+		get_corrected_stars(N, stars1, star_ref, star_meas, loc, pa, IndexOffset(offset.dec_off + delta, offset.ra_off), cone);
+		fill_jacobian(N, 2, stars0, stars1, delta);
+		/*Vary offset.ha*/
+		get_corrected_stars(N, stars1, star_ref, star_meas, loc, pa, IndexOffset(offset.dec_off, offset.ra_off + delta), cone);
+		fill_jacobian(N, 3, stars0, stars1, delta);
+		/*Vary cone*/
+		get_corrected_stars(N, stars1, star_ref, star_meas, loc, pa, offset, cone + delta);
+		fill_jacobian(N, 4, stars0, stars1, delta);
+
+		// The Jacobian is now filled. It is 2*N rows and 5 columns
+		// Gauss-Newton method: x_n - x_(n-1) = - (J'J)^-1J' * f_(n-1)
+		// 1. Matrix multiplication
+		int p, q, r;
+
+		for (p = 0; p < 5; p++) {
+			for (q = 0; q < 5; q++) {
+				double s = 0;
+				for (r = 0; r < 2 * N; r++)
+					s += jac[r][p] * jac[r][q];
+				jacjac[p][q] = s;
+			}
+		}
+
+		// 2. Matrix inversion
+		invert();
+
+		// 3. Calculate f_(n-1)
+		double newresidue = 0;
+		for (p = 0; p < N; p++) {
+			f[2 * p] = stars0[p].dec_delta - star_meas[p].dec_delta;
+			f[2 * p + 1] = stars0[p].ra_delta - star_meas[p].ra_delta;
+			newresidue += sqr(f[2 * p]) + sqr(f[2 * p + 1]);
+		}
+		newresidue = sqrt(newresidue);
+		// 4. Matrix multiplication
+		for (p = 0; p < 5; p++) {
+			double s = 0;
+			for (q = 0; q < 5; q++) {
+				for (r = 0; r < 2 * N; r++) {
+					s += invj[p][q] * jac[r][q] * f[r];
+				}
+			}
+			dp[p] = -s;
+		}
+		// 5. Apply the correction
+		pa.alt += dp[0];
+		pa.azi += dp[1];
+		offset.dec_off += dp[2];
+		offset.ra_off += dp[3];
+		cone += dp[4];
+
+		if (newresidue >= residue - tol) {
+			printf("Converged.\n");
+			break;
+		} else {
+			residue = newresidue;
+		}
+		printf("Iteration %i, %f\t%f\t%f\t%f\t%f\tr=%f\n", i, pa.alt, pa.azi, offset.dec_off, offset.ra_off, cone, residue);
+	}
+
+	printf("Final result: %f\t%f\t%f\t%f\t%f\tr=%f\n", pa.alt, pa.azi, offset.dec_off, offset.ra_off, cone, residue);
+
+}

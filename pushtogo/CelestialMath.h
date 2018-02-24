@@ -65,6 +65,33 @@ struct Transformation {
 	CartesianVector operator*(const CartesianVector &vec);
 };
 
+typedef enum {
+	PIER_SIDE_EAST, PIER_SIDE_WEST, PIER_SIDE_AUTO = 0
+} pierside_t;
+
+struct IndexOffset {
+	double dec_off; // Offset of the index position in DEC
+	double ra_off;  // Offset of the index position in RA/HA axis
+	IndexOffset(double d = 0, double r = 0) :
+			dec_off(d), ra_off(r) {
+	}
+};
+
+struct MountCoordinates {
+	double dec_delta; // Displacement from index position in DEC axis
+	double ra_delta;  // Displacement from index position in RA/HA axis
+	pierside_t side;
+	MountCoordinates(double dec = 0, double ra = 0, pierside_t s = PIER_SIDE_EAST) :
+			dec_delta(dec), ra_delta(ra), side(s) {
+	}
+	MountCoordinates operator+(const IndexOffset offset) {
+		return MountCoordinates(dec_delta + offset.dec_off, ra_delta + offset.ra_off, side);
+	}
+	MountCoordinates operator-(const IndexOffset offset) {
+		return MountCoordinates(dec_delta - offset.dec_off, ra_delta - offset.ra_off, side);
+	}
+};
+
 /**
  * Utility functions for doing math on coordinates of the celestial sphere
  */
@@ -88,6 +115,10 @@ public:
 	static LocalEquatorialCoordinates applyMisalignment(const Transformation &t, const LocalEquatorialCoordinates &a);
 	static LocalEquatorialCoordinates applyConeError(const LocalEquatorialCoordinates &a, double cone);
 
+	/*Convert to and from Mount coordinates*/
+	static MountCoordinates localEquatorialToMount(const LocalEquatorialCoordinates &a, pierside_t side = PIER_SIDE_AUTO);
+	static LocalEquatorialCoordinates mountToLocalEquatorial(const MountCoordinates &m);
+
 	/*Alignment procedures*/
 
 	/**
@@ -96,6 +127,10 @@ public:
 	static AzimuthalCoordinates alignOneStars(const LocalEquatorialCoordinates &star_ref, const LocalEquatorialCoordinates &star_meas,
 			const LocationCoordinates &loc, const AzimuthalCoordinates &pa_start);
 
+	static IndexOffset alignOneStarForOffset(const LocalEquatorialCoordinates &star_ref, const MountCoordinates &star_meas);
+
+	/*static AzimuthalCoordinates alignOneStar(const LocalEquatorialCoordinates &star_ref, const LocalEquatorialCoordinates &star_meas,
+	 const LocationCoordinates &loc, const AzimuthalCoordinates &pa_start);*/
 	/**
 	 * Two-star alignment for finding PA misalignment as well as offset in both axis
 	 * @param star_ref Reference stars (array of 2)
@@ -106,6 +141,8 @@ public:
 	 */
 	static void alignTwoStars(const LocalEquatorialCoordinates star_ref[], const LocalEquatorialCoordinates star_meas[], const LocationCoordinates &loc,
 			AzimuthalCoordinates &pa, LocalEquatorialCoordinates &offset);
+	static void alignTwoStars(const LocalEquatorialCoordinates star_ref[], const MountCoordinates star_meas[], const LocationCoordinates &loc,
+			AzimuthalCoordinates &pa, IndexOffset &offset);
 
 	/**
 	 * N-star alignment for finding PA misalignment, offset, and cone error
@@ -118,9 +155,10 @@ public:
 	 * @param offset Initial offset values. This parameter will be updated with new values
 	 * @param cone Initial cone error. This parameter will be updated with new values
 	 */
-	static void alignNStars(const int N, const LocalEquatorialCoordinates star_ref[], const LocalEquatorialCoordinates star_meas[], const LocationCoordinates &loc,
-			AzimuthalCoordinates &pa, LocalEquatorialCoordinates &offset, double &cone);
+	static void alignNStars(const int N, const LocalEquatorialCoordinates star_ref[], const LocalEquatorialCoordinates star_meas[],
+			const LocationCoordinates &loc, AzimuthalCoordinates &pa, LocalEquatorialCoordinates &offset, double &cone);
+	static void alignNStars(const int N, const LocalEquatorialCoordinates star_ref[], const MountCoordinates star_meas[],
+			const LocationCoordinates &loc, AzimuthalCoordinates &pa, IndexOffset &offset, double &cone);
 };
 
 #endif /* CELESTIALMATH_H_ */
-
