@@ -116,7 +116,7 @@ int main()
         printf("Input RA and DEC: \r\n");
         scanf("%lf%lf", &ra, &dec);
         float tstart = tim.read();
-        eq.correct_for_misalignment(&ra, &dec);
+        eq.correct_for_misalignment(&ra, &dec);asdfkj
         tstart = tim.read()-tstart;
         printf("Corrected RA=%lf, DEC=%lf\r\nTime consumed: %f s", ra, dec, tstart);
     }
