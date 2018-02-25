@@ -27,18 +27,18 @@ public:
 
 	void stop();
 
-	float setPeriod(float period);
+	double setFrequency(double freq);
 
-	int64_t getStepCount();
+	double getStepCount();
 
-	void setStepCount(int64_t set)
+	void setStepCount(double set)
 	{
 		stepCount = set;
 	}
 
-	void setMicroStep(uint8_t microstep);
+	void setMicroStep(int microstep);
 
-	void setCurrent(float current);
+	void setCurrent(double current);
 
 protected:
 	typedef enum
@@ -65,10 +65,10 @@ protected:
 	StepOut step;
 	DigitalOut dir;
 	DigitalIn err;
-	volatile float period;
-	volatile stepstatus_t status;
-	volatile int inc;
-	volatile int64_t stepCount;
+	stepstatus_t status;
+	int inc;
+	double stepCount;
+	int microstep;
 
 	bool useDIR, useERR;
 

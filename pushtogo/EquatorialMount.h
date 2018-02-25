@@ -1,4 +1,4 @@
-#include "RotationAxis.h"
+#include "Axis.h"
 #include "Mount.h"
 #include "UTCClock.h"
 #include "LocationProvider.h"
@@ -11,8 +11,8 @@ class EquatorialMount: public Mount
 {
 
 protected:
-	RotationAxis &ra;   /// RA Axis
-	RotationAxis &dec;  /// DEC Axis
+	Axis &ra;   /// RA Axis
+	Axis &dec;  /// DEC Axis
 
 	UTCClock &clock; /// Clock
 
@@ -27,11 +27,6 @@ protected:
 
 public:
 
-	typedef enum
-	{
-		PIER_SIDE_EAST, PIER_SIDE_WEST
-	} pier_side_t;
-
 	/**
 	 * Create an EquatorialMount object which controls two axis
 	 * @param ra RA Axis
@@ -41,7 +36,7 @@ public:
 	 *       This should be done using the invert option when initializing the RotationAxis objects
 	 * @sa RotationAxis
 	 */
-	EquatorialMount(RotationAxis &ra, RotationAxis &dec, UTCClock &clk,
+	EquatorialMount(Axis &ra, Axis &dec, UTCClock &clk,
 			LocationCoordinates loc);
 	virtual ~EquatorialMount()
 	{
@@ -52,8 +47,8 @@ public:
 	 *   @param  ra_dest RA coordinate in degree.
 	 *   @return true Error \n false No Error
 	 */
-	bool goTo(double ra_dest, double dec_dest);
-	bool goTo(EquatorialCoordinates dest);
+	osStatus goTo(double ra_dest, double dec_dest);
+	osStatus goTo(EquatorialCoordinates dest);
 
 
 	void emergencyStop();

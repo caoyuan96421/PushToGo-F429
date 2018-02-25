@@ -11,11 +11,11 @@
 
 void StepOut::start()
 {
-	if (status == IDLE)
+	if (status == IDLE && freq > 0) // Start only when idle and frequency is not zero
 	{
 		core_util_critical_section_enter();
 		status = STEPPING;
-		this->write(0.5);
+		this->write(0.5f);
 		tim.reset();
 		core_util_critical_section_exit();
 	}
@@ -28,16 +28,16 @@ void StepOut::stop()
 		core_util_critical_section_enter();
 		status = IDLE;
 		this->write(0);
-		stepCount += (uint64_t) (tim.read() * freq);
+		stepCount += (int64_t) (((double) tim.read_us()) / 1e6 * freq);
 		core_util_critical_section_exit();
 	}
 }
 
-float StepOut::setPeriod(float period)
+double StepOut::setFrequency(double frequency)
 {
-	if (period > 0.0f)
+	if (frequency > 0)
 	{
-		int us_period = ceilf(period * 1e6); /*Ceil to the next microsecond*/
+		int us_period = ceil(1.0E6 / frequency); /*Ceil to the next microsecond*/
 		if (status == IDLE)
 			this->period_us(us_period);
 		else
@@ -48,13 +48,18 @@ float StepOut::setPeriod(float period)
 			start();
 			core_util_critical_section_exit();
 		}
-		freq = 1000000.0 / us_period; // get CORRECT frequency!
-		return us_period / 1e6; // Return the accurate period
+		freq = 1.0E6 / us_period; // get CORRECT frequency!
 	}
 	else
 	{
-		return 0;
+		// frequency=0 effectively means stop
+		if (status == STEPPING)
+		{
+			stop();
+		}
+		freq = 0;
 	}
+	return freq; // Return the accurate period
 }
 
 void StepOut::resetCount()
@@ -72,7 +77,7 @@ int64_t StepOut::getCount()
 		return stepCount;
 	else
 	{
-		return stepCount + (int64_t) (freq * tim.read()); /*Estimate count at now*/
+		return stepCount + (int64_t) (freq * tim.read_us() / 1.0E6); /*Calculate count at now*/
 	}
 }
 

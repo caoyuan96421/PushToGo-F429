@@ -26,7 +26,6 @@ static const double delta = 1e-7;
 
 static const double RADIAN = 180.0 / M_PI;
 static const double DEGREE = M_PI / 180.0;
-static const double sidereal_day = 86164.09;
 
 CartesianVector CartesianVector::operator*(const Transformation &t) {
 	return CartesianVector(t.a11 * x + t.a21 * y + t.a31 * z, t.a12 * x + t.a22 * y + t.a32 * z, t.a13 * x + t.a23 * y + t.a33 * z);

@@ -39,6 +39,8 @@ AMIS30543StepperDriver::AMIS30543StepperDriver(SPI *spi, PinName cs,
 	writeReg(CR1, 0x03); // PWM double freq, V-slope = 35V/us
 	writeReg(CR2, 0x80); // MOTEN = 1
 	writeReg(CR3, 0x00); // 1/32 step
+
+	microstep = 32;
 }
 
 void AMIS30543StepperDriver::writeReg(regaddr_t addr, uint8_t data)
@@ -72,6 +74,7 @@ void AMIS30543StepperDriver::start(stepdir_t dir)
 	{
 		if (useDIR)
 		{
+			/*Hard switch*/
 			if (dir == STEP_FORWARD)
 				this->dir = 0;
 			else
@@ -79,6 +82,7 @@ void AMIS30543StepperDriver::start(stepdir_t dir)
 		}
 		else
 		{
+			/*Soft switch*/
 			uint8_t cr1 = readReg(CR1) & 0x7F;
 			if (dir == STEP_FORWARD)
 				cr1 |= 0x00;
@@ -87,8 +91,9 @@ void AMIS30543StepperDriver::start(stepdir_t dir)
 			writeReg(CR1, cr1);
 		}
 
-		inc = (dir == StepperMotor::STEP_FORWARD) ? 1 : -1;
+		inc = (dir == STEP_FORWARD) ? 1 : -1;
 
+		// Start stepping
 		step.start();
 		step.resetCount();
 		status = STEPPING;
@@ -101,34 +106,28 @@ void AMIS30543StepperDriver::stop()
 	{
 		status = IDLE;
 		step.stop();
-		stepCount += step.getCount() * inc;
+		stepCount += ((double) step.getCount()) * inc / microstep; // the stepCount should be divided by microstep
 	}
 }
 
-float AMIS30543StepperDriver::setPeriod(float period)
+double AMIS30543StepperDriver::setFrequency(double frequency)
 {
-	if (period > 0)
-	{
-		this->period = step.setPeriod(period);
-		return this->period;
-	}
-	else
-		return 0;
+	return step.setFrequency(frequency * microstep) / microstep; //Use the microstepping frequency
+
 }
 
-int64_t AMIS30543StepperDriver::getStepCount()
+double AMIS30543StepperDriver::getStepCount()
 {
 	if (status == IDLE)
 		return stepCount;
 	else
-		return stepCount + step.getCount() * inc;
+		return stepCount + ((double) step.getCount()) * inc / microstep; // the step count should be divided by microstep
 }
 
-void xprintf(const char *,...);
-void AMIS30543StepperDriver::setMicroStep(uint8_t microstep)
+void AMIS30543StepperDriver::setMicroStep(int microstep)
 {
 	uint8_t cr0 = readReg(CR0) & ~(0xE0);
-		
+
 	switch (microstep)
 	{
 	case 1:
@@ -165,119 +164,119 @@ void AMIS30543StepperDriver::setMicroStep(uint8_t microstep)
 		break;
 	default:
 		fprintf(stderr, "Error: microsteps must be a power of 2");
+		return;
 	}
+
+	// Update the microstep variable only if the value is valid
+	this->microstep = microstep;
 }
 
-void AMIS30543StepperDriver::setCurrent(float current)
+void AMIS30543StepperDriver::setCurrent(double current)
 {
 	uint8_t reg_cur = 0;
 	uint8_t cr0 = readReg(CR0) & ~(0x1F);
-//	xprintf("CR0=%02x", readReg(CR0));
-//	xprintf("CR1=%02x", readReg(CR1));
-//	xprintf("CR2=%02x", readReg(CR2));
-//	xprintf("CR3=%02x", readReg(CR3));
-				
-	if (current <= 0.132f)
+
+	if (current <= 0.132)
 	{
 		reg_cur = 0;
 	}
-	else if (current <= 0.245f)
+	else if (current <= 0.245)
 	{
 		reg_cur = 1;
 	}
-	else if (current <= 0.355f)
+	else if (current <= 0.355)
 	{
 		reg_cur = 2;
 	}
-	else if (current <= 0.395f)
+	else if (current <= 0.395)
 	{
 		reg_cur = 3;
 	}
-	else if (current <= 0.445f)
+	else if (current <= 0.445)
 	{
 		reg_cur = 4;
 	}
-	else if (current <= 0.485f)
+	else if (current <= 0.485)
 	{
 		reg_cur = 5;
 	}
-	else if (current <= 0.540f)
+	else if (current <= 0.540)
 	{
 		reg_cur = 6;
 	}
-	else if (current <= 0.585f)
+	else if (current <= 0.585)
 	{
 		reg_cur = 7;
 	}
-	else if (current <= 0.640f)
+	else if (current <= 0.640)
 	{
 		reg_cur = 8;
 	}
-	else if (current <= 0.715f)
+	else if (current <= 0.715)
 	{
 		reg_cur = 9;
 	}
-	else if (current <= 0.780f)
+	else if (current <= 0.780)
 	{
 		reg_cur = 10;
 	}
-	else if (current <= 0.870f)
+	else if (current <= 0.870)
 	{
 		reg_cur = 11;
 	}
-	else if (current <= 0.955f)
+	else if (current <= 0.955)
 	{
 		reg_cur = 12;
 	}
-	else if (current <= 1.060f)
+	else if (current <= 1.060)
 	{
 		reg_cur = 13;
 	}
-	else if (current <= 1.150f)
+	else if (current <= 1.150)
 	{
 		reg_cur = 14;
 	}
-	else if (current <= 1.260f)
+	else if (current <= 1.260)
 	{
 		reg_cur = 15;
 	}
-	else if (current <= 1.405f)
+	else if (current <= 1.405)
 	{
 		reg_cur = 16;
 	}
-	else if (current <= 1.520f)
+	else if (current <= 1.520)
 	{
 		reg_cur = 17;
 	}
-	else if (current <= 1.695f)
+	else if (current <= 1.695)
 	{
 		reg_cur = 18;
 	}
-	else if (current <= 1.820f)
+	else if (current <= 1.820)
 	{
 		reg_cur = 19;
 	}
-	else if (current <= 2.070f)
+	else if (current <= 2.070)
 	{
 		reg_cur = 20;
 	}
-	else if (current <= 2.240f)
+	else if (current <= 2.240)
 	{
 		reg_cur = 21;
 	}
-	else if (current <= 2.440f)
+	else if (current <= 2.440)
 	{
 		reg_cur = 22;
 	}
-	else if (current <= 2.700f)
+	else if (current <= 2.700)
 	{
 		reg_cur = 23;
 	}
-	else if (current <= 2.845f)
+	else if (current <= 2.845)
 	{
 		reg_cur = 24;
 	}
-	else if (current <= 3.000f)
+	else if (current <= 3.000)
 	{
 		reg_cur = 25;
 	}
@@ -298,5 +297,4 @@ inline void AMIS30543StepperDriver::deassertCS()
 {
 	cs = 1;
 }
-
 

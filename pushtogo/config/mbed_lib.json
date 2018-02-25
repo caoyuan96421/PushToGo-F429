@@ -2,10 +2,6 @@
     "name": "pushtogo",
     "config": {
         "HARDWARE_SETUP" : "Make sure the following settings are accurate in representing your hardware",
-        "microstep": {
-            "help": "Motor microstep. Must be a power of 2",
-            "value": 128
-        },
         "steps_per_revolution": {
             "help": "Motor steps per revolution.",
             "value": 400
@@ -17,14 +13,42 @@
         "max_speed": {
             "help": "Max speed that the motor allows (in deg/s). If you find the motor fails to follow (and/or lose steps), drop this value",
             "value": "6.0"
+        },        
+        "microstep_slew": {
+            "help": "If using AdaptiveStepperMotor interface, this microstep resolution will be used for slewing",
+            "value": 32
+        },
+        "microstep_track": {
+            "help": "If using AdaptiveStepperMotor interface, this microstep resolution will be used for tracking",
+            "value": 128
+        },
+        "microstep_correction": {
+            "help": "If using AdaptiveStepperMotor interface, this microstep resolution will be used for correction",
+            "value": 128
+        },
+        "current_slew": {
+            "help": "If using AdaptiveStepperMotor interface, this driving current will be used for slewing",
+            "value": "1.2"
+        },
+        "current_track": {
+            "help": "If using AdaptiveStepperMotor interface, this driving current will be used for tracking",
+            "value": "0.5"
+        },
+        "current_correction": {
+            "help": "If using AdaptiveStepperMotor interface, this driving current will be used for correction",
+            "value": "0.5"
+        },
+        "current_idle": {
+            "help": "If using AdaptiveStepperMotor interface, this driving current will be used when idle",
+            "value": "0.3"
         },
         
         
         
         
-        "GOTO_BEHAVIORS" : "The following settings control some details in the way that Go-To is implemented. Tweak as necessary.",
+        "AXIS_BEHAVIORS" : "The following settings control some details in the way that Go-To is implemented. Tweak as necessary.",
         "acceleration_step_time": {
-            "help": "Time increments in axis acceleration. Unit: second",
+            "help": "Time increments in axis acceleration in seconds",
             "value": "0.1"
         },
         "min_slew_angle": {
@@ -36,8 +60,8 @@
             "value": "0.05"
         },
         "min_correction_time": {
-            "help": "Minimum time of the pointing correction. If the correction requires less than this value, it will be ignored",
-            "value": "0.005"
+            "help": "Minimum time of the pointing correction, in milliseconds. If the correction requires less than this value, it will be ignored",
+            "value": 5
         },
         "max_correction_angle": {
             "help": "Maximum allowed correction angle. If this angle is exceeded, it means there is something wrong with the mount, either the motor is jamed or encoder is broken",
@@ -48,8 +72,8 @@
             "value": 10
         },
         "max_guide_time": {
-            "help": "Maximum guiding time",
-            "value": "5.0"
+            "help": "Maximum guiding time in milliseconds",
+            "value": 5000
         }
     }
 }

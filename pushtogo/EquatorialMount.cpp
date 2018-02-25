@@ -3,9 +3,7 @@
 
 static const double sidereal_day = 86164.09;
 
-void xprintf(const char *, ...);
-
-EquatorialMount::EquatorialMount(RotationAxis& ra, RotationAxis& dec,
+EquatorialMount::EquatorialMount(Axis& ra, Axis& dec,
 		UTCClock& clk, LocationCoordinates loc) :
 		ra(ra), dec(dec), clock(clk), location(loc), curr_pos(0, 0), pier_side(
 				PIER_SIDE_EAST), offset(0, 0), pa(loc.lat, 0), cone_value(0)
@@ -17,12 +15,12 @@ EquatorialMount::EquatorialMount(RotationAxis& ra, RotationAxis& dec,
 	dec.setAngleDeg(0);
 }
 
-bool EquatorialMount::goTo(double ra_dest, double dec_dest)
+osStatus EquatorialMount::goTo(double ra_dest, double dec_dest)
 {
 	return goTo(EquatorialCoordinates(dec_dest, ra_dest));
 }
 
-bool EquatorialMount::goTo(EquatorialCoordinates dest)
+osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 {
 	LocalEquatorialCoordinates dest_local =
 			CelestialMath::equatorialToLocalEquatorial(dest, clock.getTime(),
@@ -47,6 +45,11 @@ bool EquatorialMount::goTo(EquatorialCoordinates dest)
 					> remainder(dec.getAngleDeg(), 360.0)) ?
 					AXIS_ROTATE_POSITIVE : AXIS_ROTATE_NEGATIVE;
 
-	ra.slewTo(ra_dir, mount_coord.ra_delta);
-	dec.slewTo(dec_dir, mount_coord.dec_delta);
+	ra.startSlewTo(ra_dir, mount_coord.ra_delta);
+	dec.startSlewTo(dec_dir, mount_coord.dec_delta);
+
+	ra.waitForSlew();
+	dec.waitForSlew();
+
+	return osOK;
 }

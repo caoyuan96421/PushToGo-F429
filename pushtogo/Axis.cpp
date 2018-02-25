@@ -27,7 +27,8 @@ void Axis::task(Axis *p)
 		axisrotdir_t dir;
 		osThreadId_t tid;
 
-		osEvent evt = p->task_queue.get(MBED_CONF_PUSHTOGO_UPDATE_ANGLE_PERIOD);
+		// Wait for next message
+		osEvent evt = p->task_queue.get();
 		if (evt.status == osEventMessage)
 		{
 			/*New message arrived. Copy the data and free is asap*/
@@ -41,7 +42,7 @@ void Axis::task(Axis *p)
 		else
 		{
 			/*Error*/
-			fprintf(stderr, "Axis: Error fetching the task queue.");
+			fprintf(stderr, "%s: Error fetching the task queue.", p->axisName);
 			continue;
 		}
 
@@ -51,66 +52,50 @@ void Axis::task(Axis *p)
 		case msg_t::SIGNAL_SLEW_TO:
 			if (p->status == AXIS_STOPPED)
 			{
-				p->_slew(dir, value, false);
+				p->slew(dir, value, false);
 			}
 			else
 			{
-				fprintf(stderr,
-						"Axis: being slewed while not in STOPPED mode. ");
+				fprintf(stderr, "%s: being slewed while not in STOPPED mode. ",
+						p->axisName);
 			}
 			osThreadFlagsSet(tid, AXIS_SLEW_SIGNAL); /*Send a signal so that the caller is free to run*/
 			break;
 		case msg_t::SIGNAL_SLEW_INDEFINITE:
 			if (p->status == AXIS_STOPPED)
 			{
-				p->_slew(dir, 0.0, true);
+				p->slew(dir, 0.0, true);
 			}
 			else
 			{
-				fprintf(stderr,
-						"Axis: being slewed while not in STOPPED mode. ");
+				fprintf(stderr, "%s: being slewed while not in STOPPED mode. ",
+						p->axisName);
 			}
 			break;
-		case msg_t::SIGNAL_TRACK_CONT:
+		case msg_t::SIGNAL_TRACK:
 			if (p->status == AXIS_STOPPED)
 			{
-				p->_track(dir);
+				p->track(dir);
 			}
 			else
 			{
 				fprintf(stderr,
-						"Axis: trying to track while not in STOPPED mode. ");
+						"%s: trying to track while not in STOPPED mode. ",
+						p->axisName);
 			}
-			break;
-		case msg_t::SIGNAL_GUIDE:
-			if (p->status == AXIS_TRACKING)
-			{
-				p->_guide(dir, value);
-			}
-			else
-			{
-				fprintf(stderr,
-						"Axis: trying to guide while not in TRACKING mode. ");
-			}
-			osThreadFlagsSet(tid, AXIS_GUIDE_SIGNAL); /*Send a signal so that the caller is free to run*/
 			break;
 		default:
-			fprintf(stderr, "Axis: undefined signal %d", message->signal);
+			fprintf(stderr, "%s: undefined signal %d", p->axisName,
+					message->signal);
 		}
 	}
 }
 
-void Axis::_stop()
-{
-	// Simply stop the motor
-	stepper->stop();
-}
-
-void Axis::_slew(axisrotdir_t dir, double dest, bool indefinite)
+void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 {
 	if (!indefinite && (isnan(dest) || isinf(dest)))
 	{
-		fprintf(stderr, "Axis: invalid angle.");
+		fprintf(stderr, "%s: invalid angle.", axisName);
 		return;
 	}
 
@@ -118,7 +103,7 @@ void Axis::_slew(axisrotdir_t dir, double dest, bool indefinite)
 	Thread::signal_clr(AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL); // Clear flags
 	status = AXIS_SLEWING;
 	currentDirection = dir;
-	StepperMotor::stepdir_t sd = (StepperMotor::stepdir_t) (dir ^ invert);
+	stepdir_t sd = (stepdir_t) (dir ^ invert);
 
 	/* Calculate the angle to rotate*/
 	bool skip_slew = false;
@@ -169,8 +154,8 @@ void Axis::_slew(axisrotdir_t dir, double dest, bool indefinite)
 			if (waitTime < 0.0)
 				waitTime = 0.0; // With the above calculations, waitTime should no longer be zero. But if it happens to be so, let the correction do the job
 
-			xprintf("Axis: endspeed = %f deg/s, time=%f, acc=%f", endSpeed,
-					waitTime, acceleration);
+			printf("%s: endspeed = %f deg/s, time=%f, acc=%f", axisName,
+					endSpeed, waitTime, acceleration);
 		}
 		else
 		{
@@ -189,6 +174,8 @@ void Axis::_slew(axisrotdir_t dir, double dest, bool indefinite)
 	/*Slewing -> accel, wait, decel*/
 	if (!skip_slew)
 	{
+		int wait_ms;
+		uint32_t flags;
 		/*Acceleration*/
 		ramp_steps = (unsigned int) (endSpeed
 				/ MBED_CONF_PUSHTOGO_ACCELERATION_STEP_TIME / acceleration);
@@ -205,24 +192,24 @@ void Axis::_slew(axisrotdir_t dir, double dest, bool indefinite)
 				stepper->start(sd);
 
 			/*Monitor whether there is a stop/emerge stop signal*/
-			osEvent ev = Thread::signal_wait(
-			AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL,
+			uint32_t flags = osThreadFlagsWait(
+			AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny,
 			MBED_CONF_PUSHTOGO_ACCELERATION_STEP_TIME * 1000);
 
-			if (ev.status == osEventTimeout)
+			if (flags == osFlagsErrorTimeout)
 			{
 				/*Nothing happened, we're good*/
 				continue;
 			}
-			else if (ev.status == osEventSignal)
+			else if ((flags & osFlagsError) == 0)
 			{
 				// We're stopped!
 				skip_correction = true;
-				if (ev.value.signals & AXIS_EMERGE_STOP_SIGNAL)
+				if (flags & AXIS_EMERGE_STOP_SIGNAL)
 				{
 					goto emerge_stop;
 				}
-				else if (ev.value.signals & AXIS_STOP_SIGNAL)
+				else if (flags & AXIS_STOP_SIGNAL)
 				{
 					goto stop;
 				}
@@ -230,16 +217,15 @@ void Axis::_slew(axisrotdir_t dir, double dest, bool indefinite)
 		}
 
 		/*Keep slewing and wait*/
-		xprintf("Axis: wait for %f", waitTime);
-		int wait_ms =
-				(isinf(waitTime)) ? osWaitForever : (int) (waitTime * 1000);
+		printf("%s: wait for %f", axisName, waitTime); // TODO
+		wait_ms = (isinf(waitTime)) ? osWaitForever : (int) (waitTime * 1000);
 
-		osEvent ev = Thread::signal_wait(
-		AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL, wait_ms); /*Wait the remaining time*/
-		if (ev.status == osEventSignal)
+		flags = osThreadFlagsWait(
+		AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny, wait_ms); /*Wait the remaining time*/
+		if (flags != osFlagsErrorTimeout)
 		{	// We're stopped!
 			skip_correction = true;
-			if (ev.value.signals & AXIS_EMERGE_STOP_SIGNAL)
+			if (flags & AXIS_EMERGE_STOP_SIGNAL)
 			{
 				goto emerge_stop;
 			}
@@ -249,35 +235,28 @@ void Axis::_slew(axisrotdir_t dir, double dest, bool indefinite)
 		stop:
 		/*Now deceleration*/
 		endSpeed = currentSpeed;
-		unsigned int ramp_steps = (unsigned int) (currentSpeed
+		ramp_steps = (unsigned int) (currentSpeed
 				/ MBED_CONF_PUSHTOGO_ACCELERATION_STEP_TIME / acceleration);
 
 		if (ramp_steps < 1)
 			ramp_steps = 1;
 
-		xprintf("Axis: decelerate in %d steps", ramp_steps); // TODO: DEBUG
+		printf("%s: decelerate in %d steps", axisName, ramp_steps); // TODO: DEBUG
 
 		for (unsigned int i = ramp_steps - 1; i >= 1; i--)
 		{
 			currentSpeed = stepper->setFrequency(
 					stepsPerDeg * endSpeed / ramp_steps * i) / stepsPerDeg; // set and update accurate speed
 			// Wait. Now we only handle EMERGENCY STOP signal, since stop has been handled already
-			osEvent ev = Thread::signal_wait(AXIS_EMERGE_STOP_SIGNAL,
+			flags = osThreadFlagsWait(AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny,
 			MBED_CONF_PUSHTOGO_ACCELERATION_STEP_TIME * 1000);
 
-			if (ev.status == osEventTimeout)
-			{
-				/*Nothing happened, we're good*/
-				continue;
-			}
-			else if (ev.status == osEventSignal)
+			if (flags != osFlagsErrorTimeout)
 			{
 				// We're stopped!
 				skip_correction = true;
-				if (ev.value.signals & AXIS_EMERGE_STOP_SIGNAL)
-				{
-					goto emerge_stop;
-				}
+				goto emerge_stop;
+
 			}
 		}
 
@@ -290,17 +269,17 @@ void Axis::_slew(axisrotdir_t dir, double dest, bool indefinite)
 	if (!skip_correction)
 	{
 		// Switch mode
-		correct_mode();
+		correction_mode();
 		/*Use correction to goto the final angle with high resolution*/
 		angleDeg = getAngleDeg();
-		xprintf("Axis: correct from %f to %f deg", angleDeg, dest); // TODO: DEBUG
+		printf("%s: correct from %f to %f deg", axisName, angleDeg, dest); // TODO: DEBUG
 
 		double diff = remainder(angleDeg - dest, 360.0);
 		if (diff > MBED_CONF_PUSHTOGO_MAX_CORRECTION_ANGLE)
 		{
 			fprintf(stderr,
-					"Axis: correction too large: %f. Check hardware configuration.",
-					diff);
+					"%s: correction too large: %f. Check hardware configuration.",
+					axisName, diff);
 			status = AXIS_STOPPED;
 			return;
 		}
@@ -309,27 +288,27 @@ void Axis::_slew(axisrotdir_t dir, double dest, bool indefinite)
 		while (--nTry && fabsf(diff) > MBED_CONF_PUSHTOGO_CORRECTION_TOLERANCE)
 		{
 			/*Determine correction direction and time*/
-			sd = (StepperMotor::stepdir_t) ((diff > 0.0) ^ invert);
+			sd = (stepdir_t) ((diff > 0.0) ^ invert);
 
 			/*Perform correction*/
 			currentSpeed = stepper->setFrequency(stepsPerDeg * correctionSpeed)
 					/ stepsPerDeg; // Set and update actual speed
 
-			float correctionTime = (float) (fabsf(diff)) / currentSpeed; // Use the accurate speed for calculating time
+			int correctionTime_ms = (int) (fabs(diff) / currentSpeed * 1000); // Use the accurate speed for calculating time
 
-			xprintf("Axis: correction: from %f to %f deg. time=%f", angleDeg,
-					dest, correctionTime); //TODO: DEBUG
-			if (correctionTime < MBED_CONF_PUSHTOGO_MIN_CORRECTION_TIME)
+			printf("%s: correction: from %f to %f deg. time=%d ms", axisName,
+					angleDeg, dest, correctionTime_ms); //TODO: DEBUG
+			if (correctionTime_ms < MBED_CONF_PUSHTOGO_MIN_CORRECTION_TIME)
 			{
 				break;
 			}
 
 			/*Start, wait, stop*/
 			stepper->start(sd);
-			osEvent ev = Thread::signal_wait(AXIS_EMERGE_STOP_SIGNAL,
-					(int) (correctionTime * 1000));
+			uint32_t flags = osThreadFlagsWait(AXIS_EMERGE_STOP_SIGNAL,
+			osFlagsWaitAny, correctionTime_ms);
 			stepper->stop();
-			if (ev.status == osEventSignal)
+			if (flags != osFlagsErrorTimeout)
 			{
 				// Emergency stop!
 				goto emerge_stop2;
@@ -342,45 +321,117 @@ void Axis::_slew(axisrotdir_t dir, double dest, bool indefinite)
 		if (!nTry)
 		{
 			fprintf(stderr,
-					"Axis: correction failed. Check hardware configuration.");
+					"%s: correction failed. Check hardware configuration.",
+					axisName);
 		}
 
-		xprintf("Axis: correction finished: %f deg", angleDeg); //TODO:DEBUG
+		printf("%s: correction finished: %f deg", axisName, angleDeg); //TODO:DEBUG
 	}
 	emerge_stop2:
-	// Set status to stopped
+// Set status to stopped
 	currentSpeed = 0;
 	status = AXIS_STOPPED;
+	idle_mode();
 }
 
-void Axis::_track(axisrotdir_t dir)
+void Axis::track(axisrotdir_t dir)
 {
 	track_mode();
-	StepperMotor::stepdir_t sd = (StepperMotor::stepdir_t) (dir ^ invert);
+	stepdir_t sd = (stepdir_t) (dir ^ invert);
 	currentSpeed = stepper->setFrequency(trackSpeed * stepsPerDeg)
 			/ stepsPerDeg;
 	currentDirection = dir;
 	stepper->start(sd);
 	status = AXIS_TRACKING;
-}
+	Thread::signal_clr(
+	AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL | AXIS_GUIDE_SIGNAL);
+	// Empty the guide queue
+	while (!guide_queue.empty())
+		guide_queue.get();
 
-void Axis::_guide(axisrotdir_t dir, float duration)
-{
-	if (duration > MBED_CONF_PUSHTOGO_MAX_GUIDE_TIME)
+	while (true)
 	{
-		fprintf(stderr, "Axis: Guiding time too long: %f seconds", duration);
-		return;
+		// Now we wait for SOMETHING to happen - either STOP, EMERGE_STOP or GUIDE
+		uint32_t flags = osThreadFlagsWait(
+		AXIS_GUIDE_SIGNAL | AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL,
+		osFlagsWaitAny, osWaitForever);
+		if ((flags & osFlagsError) == 0) // has flag
+		{
+			if (flags & (AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL))
+			{
+				// We stop tracking
+				break;
+			}
+			else if (flags & AXIS_GUIDE_SIGNAL)
+			{
+				bool stopped = false;
+				// Guide. Process all commands in the queue
+				while (true)
+				{
+					osEvent evt = guide_queue.get(0); // try to get a message
+					if (evt.status == osEventMessage)
+					{
+						int guideTime_ms = (int) evt.value.p;
+						if (guideTime_ms == 0)
+							continue; // Nothing to guide
+						// Determine guide direction
+						axisrotdir_t guide_dir =
+								(guideTime_ms > 0) ?
+										AXIS_ROTATE_POSITIVE :
+										AXIS_ROTATE_NEGATIVE;
+						currentSpeed =
+								(currentDirection == guide_dir) ?
+										trackSpeed + guideSpeed :
+										trackSpeed - guideSpeed; /*Determine speed based on direction*/
+
+						// Clamp to maximum guide time
+						guideTime_ms = abs(guideTime_ms);
+						if (guideTime_ms > MBED_CONF_PUSHTOGO_MAX_GUIDE_TIME)
+						{
+							fprintf(stderr,
+									"Axis: Guiding time too long: %d ms",
+									abs(guideTime_ms));
+							guideTime_ms = MBED_CONF_PUSHTOGO_MAX_GUIDE_TIME;
+						}
+
+						currentSpeed = stepper->setFrequency(
+								currentSpeed * stepsPerDeg) / stepsPerDeg; //set and update accurate speed
+
+						uint32_t flags = osThreadFlagsWait(
+						AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL,
+						osFlagsWaitAny, guideTime_ms);
+						if (flags != osFlagsErrorTimeout)
+						{
+							//break and stop;
+							stopped = true;
+							break;
+						}
+						else
+						{
+							// Restore to normal speed
+							currentSpeed = stepper->setFrequency(
+									trackSpeed * stepsPerDeg) / stepsPerDeg;
+						}
+						// End guiding
+					}
+					else
+					{
+						// No more message to get. Break out
+						break;
+					}
+				}
+				if (stopped)
+				{
+					//Complete break out
+					break;
+				}
+			}
+		}
 	}
 
-	currentSpeed =
-			(currentDirection == dir) ?
-					trackSpeed + guideSpeed : trackSpeed - guideSpeed; /*Determine speed based on direction*/
-
-	currentSpeed = stepper->setFrequency(currentSpeed * stepsPerDeg)
-			/ stepsPerDeg; //set and update accurate speed
-
-	wait(duration);
-
-	currentSpeed = stepper->setFrequency(trackSpeed * stepsPerDeg)
-			/ stepsPerDeg;
+// Stop
+	currentSpeed = 0;
+	stepper->stop();
+	status = AXIS_STOPPED;
+	idle_mode();
 }

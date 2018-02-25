@@ -50,8 +50,10 @@ public:
 	 * @param stepper Pointer to stepper driver to use
 	 * @param invert Whether the stepper direction should be inverted
 	 */
-	Axis(double stepsPerDeg, StepperMotor *stepper, bool invert = false) :
-			stepsPerDeg(stepsPerDeg), stepper(stepper), invert(invert), currentSpeed(0), currentDirection(
+	Axis(double stepsPerDeg, StepperMotor *stepper, bool invert = false,
+			const char *name = "Axis") :
+			stepsPerDeg(stepsPerDeg), stepper(stepper), invert(invert), axisName(
+					name), currentSpeed(0), currentDirection(
 					AXIS_ROTATE_POSITIVE), slewSpeed(2), trackSpeed(
 					sidereal_speed), correctionSpeed(32.0f * sidereal_speed), guideSpeed(
 					0.5f * sidereal_speed), acceleration(1), status(
@@ -65,7 +67,6 @@ public:
 			error("Axis: stepper must be defined");
 
 		/*Start the task-handling thread*/
-		task_timer.start();
 		task_thread.start(callback(this->task, this));
 	}
 
@@ -160,7 +161,7 @@ public:
 		{
 			return osErrorNoMemory;
 		}
-		message->signal = msg_t::SIGNAL_TRACK_CONT;
+		message->signal = msg_t::SIGNAL_TRACK;
 		message->dir = dir;
 		osStatus s;
 		if ((s = task_queue.put(message)) != osOK)
@@ -172,42 +173,42 @@ public:
 		return osOK;
 	}
 
-	/**
-	 * Guide on the specified direction for specified time. Will block before the guide finishes
-	 * The axis must be in TRACKING mode
-	 * @param dir Direction to guide
-	 * @param time Time to guide, in second
-	 * @return osStatus
-	 */
-	osStatus startGuide(axisrotdir_t dir, double time)
-	{
-		msg_t *message = task_pool.alloc();
-		if (!message)
-		{
-			return osErrorNoMemory;
-		}
-		message->signal = msg_t::SIGNAL_GUIDE;
-		message->dir = dir;
-		message->value = time;
-		message->tid = Thread::gettid();
-		osStatus s;
-		if ((s = task_queue.put(message)) != osOK)
-		{
-			task_pool.free(message);
-			return s;
-		}
-		Thread::signal_clr(AXIS_GUIDE_SIGNAL);
+//	/**
+//	 * Guide on the specified direction for specified time. Will block before the guide finishes
+//	 * The axis must be in TRACKING mode
+//	 * @param dir Direction to guide
+//	 * @param time Time to guide, in second
+//	 * @return osStatus
+//	 */
+//	osStatus startGuide(axisrotdir_t dir, double time)
+//	{
+//		msg_t *message = task_pool.alloc();
+//		if (!message)
+//		{
+//			return osErrorNoMemory;
+//		}
+//		message->signal = msg_t::SIGNAL_GUIDE;
+//		message->dir = dir;
+//		message->value = time;
+//		message->tid = Thread::gettid();
+//		osStatus s;
+//		if ((s = task_queue.put(message)) != osOK)
+//		{
+//			task_pool.free(message);
+//			return s;
+//		}
+//		Thread::signal_clr(AXIS_GUIDE_SIGNAL);
+//
+//		return osOK;
+//	}
 
-		return osOK;
-	}
-
-	/**
-	 * Wait for a slew to finish. Must be called after and only once after a call to startSlewTo, from the same thread
-	 */
-	osStatus waitForGuide()
-	{
-		return Thread::signal_wait(AXIS_GUIDE_SIGNAL).status;
-	}
+//	/**
+//	 * Wait for a slew to finish. Must be called after and only once after a call to startSlewTo, from the same thread
+//	 */
+//	osStatus waitForGuide()
+//	{
+//		return Thread::signal_wait(AXIS_GUIDE_SIGNAL).status;
+//	}
 
 	/** BLOCKING
 	 * Perform a goto to a specified angle (in Radian) in the specified direction with slewing rate
@@ -218,10 +219,17 @@ public:
 	 */
 	osStatus guide(axisrotdir_t dir, double time)
 	{
+		if (dir == AXIS_ROTATE_NEGATIVE)
+			time = -time;
+		int32_t time_ms = (int) (time * 1000);
+		// Put the guide pulse into the queue
 		osStatus s;
-		if ((s = startGuide(dir, time)) != osOK)
+		if ((s = guide_queue.put((void*) (time_ms))) != osOK)
+		{
 			return s;
-		return waitForGuide();
+		}
+		task_thread.signal_set(AXIS_GUIDE_SIGNAL); // Signal the task thread to read the queue
+		return osOK;
 	}
 
 	/**
@@ -252,7 +260,8 @@ public:
 	/** @return new angle
 	 * @note Can be called anywhere
 	 */
-	double getAngleDeg(){
+	double getAngleDeg()
+	{
 		return remainder(stepper->getStepCount() / stepsPerDeg, 360);
 	}
 
@@ -271,14 +280,8 @@ public:
 	 */
 	void setAcceleration(double acceleration)
 	{
-		if (acceleration <= 0)
-		{
-			fprintf(stderr, "Axis: acceleration must be >0");
-		}
-		else
-		{
+		if (acceleration > 0)
 			this->acceleration = acceleration;
-		}
 	}
 
 	double getSlewSpeed() const
@@ -291,14 +294,8 @@ public:
 	 */
 	void setSlewSpeed(double slewSpeed)
 	{
-		if (slewSpeed <= 0)
-		{
-			fprintf(stderr, "Axis: slew speed must be >0");
-		}
-		else
-		{
+		if (slewSpeed > 0)
 			this->slewSpeed = slewSpeed;
-		}
 	}
 
 	double getTrackSpeedSidereal() const
@@ -311,11 +308,10 @@ public:
 	 */
 	void setTrackSpeedSidereal(double trackSpeed)
 	{
-		if (trackSpeed <= 0)
+		if (trackSpeed > 0)
 		{
-			trackSpeed = 0;
+			this->trackSpeed = trackSpeed * sidereal_speed;
 		}
-		this->trackSpeed = trackSpeed * sidereal_speed;
 	}
 
 	double getGuideSpeedSidereal() const
@@ -328,11 +324,13 @@ public:
 	 */
 	void setGuideSpeedSidereal(double guideSpeed)
 	{
-		this->guideSpeed = guideSpeed * sidereal_speed;
-		if (this->guideSpeed <= 0.01 * trackSpeed)
+		guideSpeed *= sidereal_speed;
+		if (guideSpeed <= 0.01 * trackSpeed)
 			this->guideSpeed = 0.01 * trackSpeed;
-		else if (this->guideSpeed >= 0.99 * trackSpeed)
+		else if (guideSpeed >= 0.99 * trackSpeed)
 			this->guideSpeed = 0.99 * trackSpeed;
+		else
+			this->guideSpeed = guideSpeed;
 	}
 
 	double getCorrectionSpeedSidereal() const
@@ -345,11 +343,8 @@ public:
 	 */
 	void setCorrectionSpeedSidereal(double correctionSpeed)
 	{
-		if (correctionSpeed <= 0)
-		{
-			correctionSpeed = 0;
-		}
-		this->correctionSpeed = correctionSpeed * sidereal_speed;
+		if (correctionSpeed > 0)
+			this->correctionSpeed = correctionSpeed * sidereal_speed;
 	}
 
 	double getCurrentSpeed() const
@@ -363,11 +358,7 @@ protected:
 	{
 		enum sig_t
 		{
-			SIGNAL_SLEW_TO = 0,
-			SIGNAL_SLEW_INDEFINITE,
-			SIGNAL_TRACK_CONT,
-			SIGNAL_GUIDE,
-			SIGNAL_STOP
+			SIGNAL_SLEW_TO = 0, SIGNAL_SLEW_INDEFINITE, SIGNAL_TRACK
 		} signal;
 		double value;
 		axisrotdir_t dir;
@@ -378,6 +369,7 @@ protected:
 	double stepsPerDeg; ///steps per degree
 	StepperMotor *stepper; ///Pointer to stepper motor
 	bool invert;
+	const char *axisName;
 
 	/*Runtime values*/
 	volatile double currentSpeed; /// Current speed in deg/s
@@ -390,17 +382,14 @@ protected:
 	volatile axisstatus_t status;
 	Thread task_thread; ///Thread for executing all lower-level tasks
 	Queue<msg_t, 16> task_queue; ///Queue of messages
+	Queue<void, 16> guide_queue; ///Guide pulse queue
 	MemoryPool<msg_t, 16> task_pool; ///MemoryPool for allocating messages
-	Timer task_timer;
 
 	static void task(Axis *p);
 
 	/*Low-level functions for internal use*/
-	void _slew(axisrotdir_t dir, double dest, bool indefinite);
-	void _track(axisrotdir_t dir);
-	void _guide(axisrotdir_t dir, double duration);
-	void _update_angle_from_step_count();
-	void _stop();
+	void slew(axisrotdir_t dir, double dest, bool indefinite);
+	void track(axisrotdir_t dir);
 
 	/*These functions can be overriden to provide mode selection before each type of operation is performed, such as microstepping and current setting*/
 	virtual void slew_mode()
@@ -410,6 +399,9 @@ protected:
 	{
 	}
 	virtual void correction_mode()
+	{
+	}
+	virtual void idle_mode()
 	{
 	}
 }

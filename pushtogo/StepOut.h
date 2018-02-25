@@ -17,7 +17,9 @@ public:
 	StepOut(PinName pin) :
 			PwmOut(pin), stepCount(0), freq(1), status(IDLE)
 	{
+		// Stop the output
 		this->period(1);
+		this->write(0);
 		tim.start();
 	}
 	virtual ~StepOut()
@@ -27,7 +29,7 @@ public:
 	void start();
 	void stop();
 
-	float setPeriod(float period);
+	double setFrequency(double frequency);
 	void resetCount();
 	int64_t getCount();
 
@@ -38,7 +40,7 @@ private:
 	} stepstatus_t;
 
 	int64_t stepCount;
-	float freq;
+	double freq;
 	stepstatus_t status;
 	Timer tim;
 

@@ -16,7 +16,7 @@ class SimulatedStepper_HW: public StepperMotor
 {
 public:
 	SimulatedStepper_HW(PinName in, PinName out) :
-			stepout(out), irqin(in), stepCount(0), stepCount_HW(0), period(1), status(
+			stepout(out), irqin(in), stepCount(0), stepCount_HW(0), status(
 					IDLE), inc(1)
 	{
 		irqin.fall(callback(cb, this));
@@ -31,7 +31,7 @@ public:
 		{
 			core_util_critical_section_enter();
 			status = STEPPING;
-			inc = (dir == StepperMotor::STEP_FORWARD) ? 1 : -1;
+			inc = (dir == STEP_FORWARD) ? 1 : -1;
 			stepout.start();
 			stepout.resetCount();
 			core_util_critical_section_exit();
@@ -50,37 +50,14 @@ public:
 		}
 	}
 
-	float setPeriod(float period)
+	double setFrequency(double frequency)
 	{
-		if (period > 0)
-		{
-			if (period > 2E-5F)
-//				if (status == IDLE)
-//				{
-//					this->period = stepout.setPeriod(period);
-//				}
-//				else
-//				{
-//					core_util_critical_section_enter();
-//					stop();
-					this->period = stepout.setPeriod(period);
-//					start(
-//							inc == 1 ?
-//									StepperMotor::STEP_FORWARD :
-//									StepperMotor::STEP_BACKWARD);
-//					core_util_critical_section_exit();
-//				}
-			else
-			{
-				error("Period too small: %f", period);
-			}
-			return this->period;
-		}
-		else
-			return 0;
+		if (frequency > 100000.0)
+			frequency = 100000.0;
+		return stepout.setFrequency(frequency);
 	}
 
-	int64_t getStepCount()
+	double getStepCount()
 	{
 		if (status == IDLE)
 			return stepCount;
@@ -109,7 +86,6 @@ private:
 
 	int64_t stepCount;
 	int64_t stepCount_HW;
-	float period;
 	stepstatus_t status;
 	int32_t inc;
 
