@@ -163,7 +163,7 @@ void AMIS30543StepperDriver::setMicroStep(int microstep)
 		writeReg(CR0, cr0 | (0x00 << 5));  // 1/32-step
 		break;
 	default:
-		fprintf(stderr, "Error: microsteps must be a power of 2");
+		debug("Error: microsteps must be a power of 2\n");
 		return;
 	}
 
@@ -282,7 +282,7 @@ void AMIS30543StepperDriver::setCurrent(double current)
 	}
 	else
 	{
-		fprintf(stderr, "Error: maximum current supported is 3.0A/phase");
+		debug("Error: maximum current supported is 3.0A/phase\n");
 		return;
 	}
 	writeReg(CR0, cr0 | reg_cur);

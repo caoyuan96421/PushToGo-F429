@@ -7,7 +7,7 @@
 
 #include <Axis.h>
 
-extern void xprintf(const char *, ...);
+#define AXIS_DEBUG 0
 
 static inline double min(double x, double y)
 {
@@ -42,7 +42,7 @@ void Axis::task(Axis *p)
 		else
 		{
 			/*Error*/
-			fprintf(stderr, "%s: Error fetching the task queue.", p->axisName);
+			debug("%s: Error fetching the task queue.\n", p->axisName);
 			continue;
 		}
 
@@ -56,7 +56,7 @@ void Axis::task(Axis *p)
 			}
 			else
 			{
-				fprintf(stderr, "%s: being slewed while not in STOPPED mode. ",
+				debug("%s: being slewed while not in STOPPED mode.\n",
 						p->axisName);
 			}
 			osThreadFlagsSet(tid, AXIS_SLEW_SIGNAL); /*Send a signal so that the caller is free to run*/
@@ -68,7 +68,7 @@ void Axis::task(Axis *p)
 			}
 			else
 			{
-				fprintf(stderr, "%s: being slewed while not in STOPPED mode. ",
+				debug("%s: being slewed while not in STOPPED mode.\n",
 						p->axisName);
 			}
 			break;
@@ -79,14 +79,12 @@ void Axis::task(Axis *p)
 			}
 			else
 			{
-				fprintf(stderr,
-						"%s: trying to track while not in STOPPED mode. ",
+				debug("%s: trying to track while not in STOPPED mode.\n",
 						p->axisName);
 			}
 			break;
 		default:
-			fprintf(stderr, "%s: undefined signal %d", p->axisName,
-					message->signal);
+			debug("%s: undefined signal %d\n", p->axisName, message->signal);
 		}
 	}
 }
@@ -95,7 +93,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 {
 	if (!indefinite && (isnan(dest) || isinf(dest)))
 	{
-		fprintf(stderr, "%s: invalid angle.", axisName);
+		debug("%s: invalid angle.\n", axisName);
 		return;
 	}
 
@@ -154,8 +152,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			if (waitTime < 0.0)
 				waitTime = 0.0; // With the above calculations, waitTime should no longer be zero. But if it happens to be so, let the correction do the job
 
-			printf("%s: endspeed = %f deg/s, time=%f, acc=%f", axisName,
-					endSpeed, waitTime, acceleration);
+			debug_if(AXIS_DEBUG, "%s: endspeed = %f deg/s, time=%f, acc=%f\n",
+					axisName, endSpeed, waitTime, acceleration);
 		}
 		else
 		{
@@ -217,7 +215,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		}
 
 		/*Keep slewing and wait*/
-		printf("%s: wait for %f", axisName, waitTime); // TODO
+		debug_if(AXIS_DEBUG, "%s: wait for %f\n", axisName, waitTime); // TODO
 		wait_ms = (isinf(waitTime)) ? osWaitForever : (int) (waitTime * 1000);
 
 		flags = osThreadFlagsWait(
@@ -241,7 +239,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		if (ramp_steps < 1)
 			ramp_steps = 1;
 
-		printf("%s: decelerate in %d steps", axisName, ramp_steps); // TODO: DEBUG
+		debug_if(AXIS_DEBUG, "%s: decelerate in %d steps\n", axisName,
+				ramp_steps); // TODO: DEBUG
 
 		for (unsigned int i = ramp_steps - 1; i >= 1; i--)
 		{
@@ -272,13 +271,14 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		correction_mode();
 		/*Use correction to goto the final angle with high resolution*/
 		angleDeg = getAngleDeg();
-		printf("%s: correct from %f to %f deg", axisName, angleDeg, dest); // TODO: DEBUG
+		debug_if(AXIS_DEBUG, "%s: correct from %f to %f deg\n", axisName,
+				angleDeg, dest); // TODO: DEBUG
 
 		double diff = remainder(angleDeg - dest, 360.0);
 		if (diff > MBED_CONF_PUSHTOGO_MAX_CORRECTION_ANGLE)
 		{
-			fprintf(stderr,
-					"%s: correction too large: %f. Check hardware configuration.",
+			debug(
+					"%s: correction too large: %f. Check hardware configuration.\n",
 					axisName, diff);
 			status = AXIS_STOPPED;
 			return;
@@ -296,7 +296,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 
 			int correctionTime_ms = (int) (fabs(diff) / currentSpeed * 1000); // Use the accurate speed for calculating time
 
-			printf("%s: correction: from %f to %f deg. time=%d ms", axisName,
+			debug_if(AXIS_DEBUG,
+					"%s: correction: from %f to %f deg. time=%d ms\n", axisName,
 					angleDeg, dest, correctionTime_ms); //TODO: DEBUG
 			if (correctionTime_ms < MBED_CONF_PUSHTOGO_MIN_CORRECTION_TIME)
 			{
@@ -320,12 +321,12 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 
 		if (!nTry)
 		{
-			fprintf(stderr,
-					"%s: correction failed. Check hardware configuration.",
+			debug("%s: correction failed. Check hardware configuration.\n",
 					axisName);
 		}
 
-		printf("%s: correction finished: %f deg", axisName, angleDeg); //TODO:DEBUG
+		debug_if(AXIS_DEBUG, "%s: correction finished: %f deg\n", axisName,
+				angleDeg); //TODO:DEBUG
 	}
 	emerge_stop2:
 // Set status to stopped
@@ -388,8 +389,7 @@ void Axis::track(axisrotdir_t dir)
 						guideTime_ms = abs(guideTime_ms);
 						if (guideTime_ms > MBED_CONF_PUSHTOGO_MAX_GUIDE_TIME)
 						{
-							fprintf(stderr,
-									"Axis: Guiding time too long: %d ms",
+							debug("Axis: Guiding time too long: %d ms\n",
 									abs(guideTime_ms));
 							guideTime_ms = MBED_CONF_PUSHTOGO_MAX_GUIDE_TIME;
 						}
@@ -434,4 +434,9 @@ void Axis::track(axisrotdir_t dir)
 	stepper->stop();
 	status = AXIS_STOPPED;
 	idle_mode();
+}
+
+Axis::~Axis()
+{
+	task_thread.terminate();
 }

@@ -1,4 +1,5 @@
 #include "mbed.h"
+#include <LCDConsole.h>
 #include <stdio.h>
 #include "SDBlockDevice.h"
 #include "FATFileSystem.h"
@@ -32,6 +33,7 @@ typedef struct
 
 typedef Mail<mail_t, 256> MB_t;
 MB_t mbox;
+Serial pc(USBTX, USBRX, 115200);
 
 Timer tim;
 void printer(MB_t *mbox)
@@ -39,7 +41,7 @@ void printer(MB_t *mbox)
 	while (true)
 	{
 		mail_t *m = (mail_t *) mbox->get().value.p;
-		printf("%s\r\n", m->msg);
+		pc.printf("%s\r\n", m->msg);
 		mbox->free(m);
 	}
 }
@@ -63,22 +65,29 @@ void xprintf(const char* format, ...)
 
 extern void test_stepper();
 extern void testmath();
+extern void test_em();
+extern void test_deapply();
 
 SDBlockDevice sdb(PA_7, PB_4, PA_5, PC_13);
 FATFileSystem fs("fs");
 
 char s[128];
 
-Thread test;
+Thread test(osPriorityNormal, 16384, NULL, "test");
 
 int main()
 {
+	/*Enable LCD redirecting*/
+	LCDConsole::init(0, 0, 240, 280);
+	LCDConsole::redirect(true);
+	setvbuf(stdout, NULL, _IONBF, 0);
+	setvbuf(stderr, NULL, _IONBF, 0);
+
+	printf("System initialized.\n");
+
 	th.start(blink);
-
 	tim.start();
-
 	printer_th.start(callback(printer, &mbox));
-
 	xprintf("System initialized");
 
 	if (fs.mount(&sdb) == 0)
@@ -101,32 +110,22 @@ int main()
 		xprintf("FS failed to load SD card.");
 	}
 
-	testmath();
 
-	test.start(test_stepper);
+//	testmath();
+
+//	test_deapply();
+	test.start(test_em);
+
+	int i=0;
 
 	while (1)
-	{ //
-//		Thread::wait(1000);
-//		time_t t = time(NULL);
-//
-//		xprintf("Time as seconds since January 1, 1970 = %d\n", t);
-//
-//        xprintf("Time as a basic string = %s", ctime(&t));
-//
-//        char buffer[32];
-//        strftime(buffer, 32, "%I:%M %p\n", localtime(&t));
-//        xprintf("Time as a custom formatted string = %s", buffer);
-
-//        EquatorialMount eq;
-//        double ra, dec;
-//        printf("Input RA and DEC: \r\n");
-//        scanf("%lf%lf", &ra, &dec);
-//        float tstart = tim.read();
-////        eq.correct_for_misalignment(&ra, &dec);
-//        tstart = tim.read()-tstart;
-//        printf("Corrected RA=%lf, DEC=%lf\r\nTime consumed: %f s", ra, dec, tstart);
-		Thread::yield();
+	{
+//		uint64_t timeNow = tim.read_high_resolution_us();
+//		printf("Hello world! ");
+//		fprintf(stderr, " asdjfk jaskldfj klasdjklf jklasdf %f %lld us\n", tim.read(),
+//				tim.read_high_resolution_us() - timeNow);
+//		printf("%d", i++);
+		Thread::wait(100);
 	}
 }
 

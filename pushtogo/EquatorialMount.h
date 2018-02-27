@@ -1,8 +1,16 @@
+#ifndef EQUATORIALMOUNT_H_
+#define EQUATORIALMOUNT_H_
+
 #include "Axis.h"
 #include "Mount.h"
 #include "UTCClock.h"
 #include "LocationProvider.h"
 #include "CelestialMath.h"
+
+typedef enum
+{
+	NUDGE_EAST, NUDGE_WEST, NUDGE_NORTH, NUDGE_SOUTH,
+} nudgedir_t;
 
 /**
  * Object that represents an equatorial mount with two perpendicular axis called RA and Dec.
@@ -17,13 +25,17 @@ protected:
 	UTCClock &clock; /// Clock
 
 	LocationCoordinates location;   /// Current location (GPS coordinates)
-	MountCoordinates curr_pos; /// Current Position
+	bool south;	/// If we are in south semisphere
+	MountCoordinates curr_pos; /// Current Position in mount coordinates (offset from the index positions)
+	EquatorialCoordinates curr_pos_eq; /// Current Position in the equatorial coordinates (absolute pointing direction in the sky)
 
 	pierside_t pier_side;      /// Side of pier. 1: East
+	IndexOffset offset; /// Offset in DEC and RA(HA) axis index position
 	AzimuthalCoordinates pa;    /// Alt-azi coordinate of the actual polar axis
 	Transformation pa_trans;
-	IndexOffset offset; /// Offset in DEC and RA(HA) axis index position
 	double cone_value; /// Non-orthogonality between the two axis, or cone value.
+
+	void update_position();
 
 public:
 
@@ -45,12 +57,42 @@ public:
 	/**
 	 *   Perform a Go-To to specified equatorial coordinates in the sky
 	 *   @param  ra_dest RA coordinate in degree.
-	 *   @return true Error \n false No Error
+	 *   @return osOK if no error
 	 */
 	osStatus goTo(double ra_dest, double dec_dest);
 	osStatus goTo(EquatorialCoordinates dest);
 
+	osStatus nudgeOn(nudgedir_t);
 
+	/**
+	 * Call emergency stop of the Axis objects
+	 * @note This function can be called from any context (including ISR) to perform a hard stop of the mount
+	 */
 	void emergencyStop();
 
+	/**
+	 * Call stop of the Axis objects
+	 * @note This function can be called from any context (including ISR) to perform a soft stop of the mount
+	 */
+	void stop();
+
+	/**
+	 * Get current equatorial coordinates
+	 */
+	EquatorialCoordinates getEquatorialCoordinates()
+	{
+		update_position();
+		return curr_pos_eq;
+	}
+
+	/**
+	 * Set slew rate of both axis
+	 */
+	void setSlewSpeed(double rate)
+	{
+		ra.setSlewSpeed(rate);
+		dec.setSlewSpeed(rate);
+	}
 };
+
+#endif /*EQUATORIALMOUNT_H_*/

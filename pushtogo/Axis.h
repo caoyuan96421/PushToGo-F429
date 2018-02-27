@@ -42,7 +42,6 @@ typedef enum
 class Axis
 {
 public:
-	Axis();
 
 	/**
 	 * Create a RotationAxis object
@@ -70,9 +69,7 @@ public:
 		task_thread.start(callback(this->task, this));
 	}
 
-	virtual ~Axis()
-	{
-	}
+	virtual ~Axis();
 
 	/**
 	 * Perform a goto to a specified angle (in Radian) in the specified direction with slewing rate
@@ -173,44 +170,7 @@ public:
 		return osOK;
 	}
 
-//	/**
-//	 * Guide on the specified direction for specified time. Will block before the guide finishes
-//	 * The axis must be in TRACKING mode
-//	 * @param dir Direction to guide
-//	 * @param time Time to guide, in second
-//	 * @return osStatus
-//	 */
-//	osStatus startGuide(axisrotdir_t dir, double time)
-//	{
-//		msg_t *message = task_pool.alloc();
-//		if (!message)
-//		{
-//			return osErrorNoMemory;
-//		}
-//		message->signal = msg_t::SIGNAL_GUIDE;
-//		message->dir = dir;
-//		message->value = time;
-//		message->tid = Thread::gettid();
-//		osStatus s;
-//		if ((s = task_queue.put(message)) != osOK)
-//		{
-//			task_pool.free(message);
-//			return s;
-//		}
-//		Thread::signal_clr(AXIS_GUIDE_SIGNAL);
-//
-//		return osOK;
-//	}
-
-//	/**
-//	 * Wait for a slew to finish. Must be called after and only once after a call to startSlewTo, from the same thread
-//	 */
-//	osStatus waitForGuide()
-//	{
-//		return Thread::signal_wait(AXIS_GUIDE_SIGNAL).status;
-//	}
-
-	/** BLOCKING
+	/**
 	 * Perform a goto to a specified angle (in Radian) in the specified direction with slewing rate
 	 * It will perform an acceleration, a GoTo, and a deceleration before returning
 	 * @param dir Rotation direction

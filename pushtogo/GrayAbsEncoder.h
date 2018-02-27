@@ -5,9 +5,9 @@
  *      Author: caoyuan9642
  */
 
-#ifndef TELESCOPE_GRAYABSENCODER_H_
+#ifndef GRAYABSENCODER_H_
 
-#define TELESCOPE_GRAYABSENCODER_H_
+#define GRAYABSENCODER_H_
 
 #include <AbsEncoder.h>
 
@@ -39,5 +39,5 @@ public:
 	}
 };
 
-#endif /* TELESCOPE_GRAYABSENCODER_H_ */
+#endif /* GRAYABSENCODER_H_ */
 

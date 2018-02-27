@@ -10,28 +10,15 @@
 #include <AMIS30543StepperDriver.h>
 #include "mbed.h"
 
-Thread report;
-SPI spi3(PC_12, PC_11, PB_3_ALT0);
-AMIS30543StepperDriver stepper_real(&spi3, PE_3, PB_7);
-
-//SPI spi4(PE_6, PE_5, PE_2);
-//AMIS30543StepperDriver stepper_real(&spi4, PE_4, PC_8);
-
 const float stepsPerDeg = MBED_CONF_PUSHTOGO_STEPS_PER_REVOLUTION
 		* MBED_CONF_PUSHTOGO_REDUCTION_FACTOR / 360.0f;
 
-AdaptiveAxis axis(stepsPerDeg, &stepper_real, false, "DEC Axis");
-
-InterruptIn button(USER_BUTTON);
-
-void xprintf(const char *, ...);
-
-void report_stepper()
+void report_stepper(Axis *axis)
 {
 	while (1)
 	{
-		xprintf("Position: %f deg. Status: %d. Speed: %f", axis.getAngleDeg(),
-				axis.getStatus(), axis.getCurrentSpeed());
+		printf("Position: %f deg. Status: %d. Speed: %f", axis->getAngleDeg(),
+				axis->getStatus(), axis->getCurrentSpeed());
 		wait(0.1);
 	}
 }
@@ -43,26 +30,35 @@ void emerg_stop(Axis *pa)
 
 void test_stepper()
 {
+	Thread report(osPriorityNormal, 16384, NULL, "report");
+	//SPI spi3(PC_12, PC_11, PB_3_ALT0);
+	//AMIS30543StepperDriver stepper_real(&spi3, PE_3, PB_7);
+
+	SPI spi4(PE_6, PE_5, PE_2);
+	AMIS30543StepperDriver stepper_real(&spi4, PE_4, PC_8);
+	AdaptiveAxis axis(stepsPerDeg, &stepper_real, false, "DEC Axis");
+	InterruptIn button(USER_BUTTON);
+
 	Timeout to, t2;
-	report.start(report_stepper);
+	report.start(callback(report_stepper, &axis));
 	button.rise(callback(emerg_stop, &axis));
 
 	// Test 1
 //	wait(2);
-//	xprintf("Test 1: Slew to -10deg at 1 deg/s");
+//	printf("Test 1: Slew to -10deg at 1 deg/s");
 //
 //	axis.slewTo(AXIS_ROTATE_NEGATIVE, -10);
 //
 //	// Test 2
 //	wait(2);
-//	xprintf("Test 2: Slew to 10deg at 4 deg/s");
+//	printf("Test 2: Slew to 10deg at 4 deg/s");
 //
 //	axis.setSlewSpeed(4);
 //	axis.slewTo(AXIS_ROTATE_POSITIVE, 10);
 //
 //	// Test 3
 //	wait(2);
-//	xprintf(
+//	printf(
 //			"Test 3: Slew to 20deg at 4 deg/s and emergency stop after 5s, then to 0 degree");
 //	axis.setSlewSpeed(4);
 //	to.attach(callback(emerg_stop, &axis), 5);
@@ -74,31 +70,31 @@ void test_stepper()
 //
 //	// Test 4
 //	wait(2);
-//	xprintf("Test 4: Slew to 2deg at 4 deg/s");
+//	printf("Test 4: Slew to 2deg at 4 deg/s");
 //	axis.setSlewSpeed(4);
 //	axis.slewTo(AXIS_ROTATE_POSITIVE, 2);
 //
 //	// Test 5
 //	wait(2);
-//	xprintf("Test 5: Slew to 1.8deg");
+//	printf("Test 5: Slew to 1.8deg");
 //	axis.setSlewSpeed(4);
 //	axis.slewTo(AXIS_ROTATE_NEGATIVE, 1.8);
 //
 //	// Test 6
 //	wait(2);
-//	xprintf("Test 6: Slew to 1.2deg");
+//	printf("Test 6: Slew to 1.2deg");
 //	axis.setSlewSpeed(4);
 //	axis.slewTo(AXIS_ROTATE_NEGATIVE, 1.2);
 //
 //	// Test 7
 //	wait(2);
-//	xprintf("Test 7: Slew to 0deg");
+//	printf("Test 7: Slew to 0deg");
 //	axis.setSlewSpeed(4);
 //	axis.slewTo(AXIS_ROTATE_NEGATIVE, 0);
 //
 //	// Test 8
 //	wait(2);
-//	xprintf("Test 8: Slew for 15s in async mode");
+//	printf("Test 8: Slew for 15s in async mode");
 //	axis.setSlewSpeed(8);
 ////	axis.setAcceleration(2);
 //	axis.startSlewingIndefinite(AXIS_ROTATE_POSITIVE);
@@ -110,7 +106,7 @@ void test_stepper()
 //	wait(2);
 //	axis.slewTo(AXIS_ROTATE_NEGATIVE, 0);
 
-	xprintf("Test 9: Guiding");
+	printf("Test 9: Guiding");
 	wait(2);
 	axis.startTracking(AXIS_ROTATE_POSITIVE);
 
@@ -148,9 +144,8 @@ void test_stepper()
 	axis.guide(AXIS_ROTATE_NEGATIVE, 0.5);
 	wait(10);
 
-	xprintf("Test finished");
+	printf("Test finished");
 	report.terminate();
 	axis.stop();
-
 }
 
