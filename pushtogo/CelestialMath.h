@@ -9,6 +9,7 @@
 #define CELESTIALMATH_H_
 
 #include <time.h>
+#include <math.h>
 
 struct EquatorialCoordinates
 {
@@ -31,12 +32,14 @@ struct LocalEquatorialCoordinates
 	LocalEquatorialCoordinates operator+(
 			const LocalEquatorialCoordinates &b) const
 	{
-		return LocalEquatorialCoordinates(dec + b.dec, ha + b.ha);
+		return LocalEquatorialCoordinates(remainder(dec + b.dec, 360),
+				remainder(ha + b.ha, 360));
 	}
 	LocalEquatorialCoordinates operator-(
 			const LocalEquatorialCoordinates &b) const
 	{
-		return LocalEquatorialCoordinates(dec - b.dec, ha - b.ha);
+		return LocalEquatorialCoordinates(remainder(dec - b.dec, 360),
+				remainder(ha - b.ha, 360));
 	}
 };
 
@@ -119,13 +122,13 @@ struct MountCoordinates
 	}
 	MountCoordinates operator+(const IndexOffset offset)
 	{
-		return MountCoordinates(dec_delta + offset.dec_off,
-				ra_delta + offset.ra_off, side);
+		return MountCoordinates(remainder(dec_delta + offset.dec_off, 360),
+				remainder(ra_delta + offset.ra_off, 360), side);
 	}
 	MountCoordinates operator-(const IndexOffset offset)
 	{
-		return MountCoordinates(dec_delta - offset.dec_off,
-				ra_delta - offset.ra_off, side);
+		return MountCoordinates(remainder(dec_delta - offset.dec_off, 360),
+				remainder(ra_delta - offset.ra_off, 360), side);
 	}
 };
 

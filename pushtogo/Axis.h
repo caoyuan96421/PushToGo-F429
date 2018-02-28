@@ -13,7 +13,7 @@
 #include "mbed.h"
 
 static const double sidereal_speed = 0.00417807462f; /* deg / s */
-#define AXIS_SLEW_SIGNAL			0x00010000
+//#define AXIS_SLEW_SIGNAL			0x00010000
 #define AXIS_GUIDE_SIGNAL			0x00020000
 #define AXIS_STOP_SIGNAL			0x00040000
 #define AXIS_EMERGE_STOP_SIGNAL		0x00080000
@@ -57,7 +57,7 @@ public:
 					sidereal_speed), correctionSpeed(32.0f * sidereal_speed), guideSpeed(
 					0.5f * sidereal_speed), acceleration(1), status(
 					AXIS_STOPPED), task_thread(osPriorityRealtime,
-			OS_STACK_SIZE, NULL, "Axis_task")
+			OS_STACK_SIZE, NULL, "Axis_task"), slew_finish_sem(0, 1)
 	{
 		if (stepsPerDeg <= 0)
 			error("Axis: steps per degree must be > 0");
@@ -87,14 +87,16 @@ public:
 		message->signal = msg_t::SIGNAL_SLEW_TO;
 		message->value = angle;
 		message->dir = dir;
-		message->tid = Thread::gettid();
 		osStatus s;
+
+		debug_if(0, "%s: CLR SLEW 0x%08x\n", axisName, Thread::gettid());
+		slew_finish_sem.wait(0); // Make sure the semaphore is cleared. THIS MUST BE DONE BEFORE THE MESSAGE IS ENQUEUED
+
 		if ((s = task_queue.put(message)) != osOK)
 		{
 			task_pool.free(message);
 			return s;
 		}
-		Thread::signal_clr(AXIS_SLEW_SIGNAL);
 
 		return osOK;
 	}
@@ -104,7 +106,8 @@ public:
 	 */
 	osStatus waitForSlew()
 	{
-		return Thread::signal_wait(AXIS_SLEW_SIGNAL).status;
+		debug_if(0, "%s: WAIT SLEW 0x%08x\n", axisName, Thread::gettid());
+		return slew_finish_sem.wait();
 	}
 
 	/** BLOCKING
@@ -322,7 +325,6 @@ protected:
 		} signal;
 		double value;
 		axisrotdir_t dir;
-		osThreadId_t tid;
 	} msg_t;
 
 	/*Configurations*/
@@ -344,6 +346,7 @@ protected:
 	Queue<msg_t, 16> task_queue; ///Queue of messages
 	Queue<void, 16> guide_queue; ///Guide pulse queue
 	MemoryPool<msg_t, 16> task_pool; ///MemoryPool for allocating messages
+	Semaphore slew_finish_sem;
 
 	static void task(Axis *p);
 

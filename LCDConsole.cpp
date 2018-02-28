@@ -60,13 +60,13 @@ void LCDConsole::task_thread()
 		mutex.lock(); // Lock the buffer. If any thread is still printing stuff to the buffer, this will wait for it to finish
 
 		// clear area;
-		lcd.SetTextColor(BG_COLOR);
-		lcd.FillRect(x0, y0, width, height);
+//		lcd.SetTextColor(BG_COLOR);
+//		lcd.FillRect(x0, y0, width, height);
 
 		int line = 0, col = 0;
 		int x = x0, y = y0;
 		lcd.SetBackColor(BG_COLOR);
-		for (int *p = head; p != tail;)
+		for (int *p = head, i = 0; i < buffersize; i++)
 		{
 			// Set color from the buffer
 			lcd.SetTextColor((uint32_t(0xFF000000 | (*p >> 8))));
@@ -74,9 +74,11 @@ void LCDConsole::task_thread()
 			// Content to draw
 			unsigned char c = (*p) & 0xFF;
 
-			// Display the char if displayable, otherwise just skip
+			// Display the char if displayable, otherwise put white space
 			if (isprint(c))
 				lcd.DisplayChar(x, y, c);
+			else
+				lcd.DisplayChar(x, y, ' ');
 
 			x += BSP_LCD_GetFont()->Width;
 			col++;
@@ -108,15 +110,10 @@ ssize_t LCDConsole::read(void* buffer, size_t size)
 	return -1;
 }
 
-void xprintf(const char*, ...);
 ssize_t LCDConsole::write(const void* str, size_t size)
 {
 	mutex.lock();
 	char *pb = (char*) str;
-	char cc = *(pb + size);
-	*(pb + size) = 0;
-	xprintf("write: |%s|", pb);
-	*(pb + size) = cc;
 	for (char *p = pb; p < pb + size; p++)
 	{
 		char c = (int) (*p);
@@ -166,15 +163,19 @@ ssize_t LCDConsole::write(const void* str, size_t size)
 		if (scroll)
 		{
 			// Scroll a line
-			for (int i = 0; i < textwidth; i++)
+			head += textwidth; // Increase head by one line
+			if (head >= buffer + buffersize)
 			{
-				*(head++) = 0; // Increase head and init it to zero
-				if (head >= buffer + buffersize)
+				head -= buffersize; // wrap
+			}
+			for (int *p = tail; p != head;)
+			{
+				*(p++) = 0; // Set everything between tail and head to null
+				if (p >= buffer + buffersize)
 				{
-					head -= buffersize; // wrap
+					p -= buffersize;
 				}
 			}
-
 		}
 	}
 	sem_update.release(); // Signal the task to update the graphics

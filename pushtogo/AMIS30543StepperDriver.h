@@ -19,9 +19,7 @@ class AMIS30543StepperDriver: public StepperMotor
 public:
 	AMIS30543StepperDriver(SPI *spi, PinName cs, PinName step, PinName dir = NC,
 			PinName err = NC);
-	virtual ~AMIS30543StepperDriver()
-	{
-	}
+	virtual ~AMIS30543StepperDriver();
 
 	void start(stepdir_t dir);
 

@@ -7,7 +7,7 @@
 
 #include <Axis.h>
 
-#define AXIS_DEBUG 0
+#define AXIS_DEBUG 1
 
 static inline double min(double x, double y)
 {
@@ -25,7 +25,6 @@ void Axis::task(Axis *p)
 		enum msg_t::sig_t signal;
 		float value;
 		axisrotdir_t dir;
-		osThreadId_t tid;
 
 		// Wait for next message
 		osEvent evt = p->task_queue.get();
@@ -36,7 +35,6 @@ void Axis::task(Axis *p)
 			signal = message->signal;
 			value = message->value;
 			dir = message->dir;
-			tid = message->tid;
 			p->task_pool.free(message);
 		}
 		else
@@ -45,6 +43,8 @@ void Axis::task(Axis *p)
 			debug("%s: Error fetching the task queue.\n", p->axisName);
 			continue;
 		}
+		debug_if(AXIS_DEBUG, "%s: MSG %d %f %d 0x%8x\n", p->axisName, signal,
+				value, dir);
 
 		/*Check the type of the signal, and start corresponding operations*/
 		switch (signal)
@@ -59,7 +59,8 @@ void Axis::task(Axis *p)
 				debug("%s: being slewed while not in STOPPED mode.\n",
 						p->axisName);
 			}
-			osThreadFlagsSet(tid, AXIS_SLEW_SIGNAL); /*Send a signal so that the caller is free to run*/
+			debug_if(0, "%s: SIG SLEW 0x%08x\n", p->axisName, Thread::gettid());
+			p->slew_finish_sem.release(); /*Send a signal so that the caller is free to run*/
 			break;
 		case msg_t::SIGNAL_SLEW_INDEFINITE:
 			if (p->status == AXIS_STOPPED)
@@ -438,5 +439,16 @@ void Axis::track(axisrotdir_t dir)
 
 Axis::~Axis()
 {
+	// Wait until the axis is stopped
+	if (status != AXIS_STOPPED)
+	{
+		stop();
+		while (status != AXIS_STOPPED)
+		{
+			Thread::wait(100);
+		}
+	}
+
+	// Terminate the task thread to prevent illegal access to destroyed objects.
 	task_thread.terminate();
 }

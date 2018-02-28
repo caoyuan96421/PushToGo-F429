@@ -24,6 +24,8 @@ public:
 	}
 	virtual ~StepOut()
 	{
+		// Stop the PWM Output
+		this->write(0);
 	}
 
 	void start();

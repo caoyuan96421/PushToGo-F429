@@ -124,7 +124,7 @@ int main()
 //		printf("Hello world! ");
 //		fprintf(stderr, " asdjfk jaskldfj klasdjklf jklasdf %f %lld us\n", tim.read(),
 //				tim.read_high_resolution_us() - timeNow);
-//		printf("%d", i++);
+//		printf("\r%d", i++);
 		Thread::wait(100);
 	}
 }

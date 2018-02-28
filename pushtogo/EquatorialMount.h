@@ -7,10 +7,37 @@
 #include "LocationProvider.h"
 #include "CelestialMath.h"
 
+/**
+ * Direction of nudge
+ */
 typedef enum
 {
-	NUDGE_EAST, NUDGE_WEST, NUDGE_NORTH, NUDGE_SOUTH,
+	NUDGE_NONE = 0,
+	NUDGE_EAST = 1,
+	NUDGE_WEST = 2,
+	NUDGE_NORTH = 4,
+	NUDGE_SOUTH = 8,
+
+	NUDGE_NORTHWEST = NUDGE_NORTH | NUDGE_WEST,
+	NUDGE_SOUTHWEST = NUDGE_SOUTH | NUDGE_WEST,
+	NUDGE_NORTHEAST = NUDGE_NORTH | NUDGE_EAST,
+	NUDGE_SOUTHEAST = NUDGE_SOUTH | NUDGE_EAST,
 } nudgedir_t;
+
+/**
+ * Alignment star object
+ */
+struct AlignmentStar
+{
+	EquatorialCoordinates star_ref; /// Reference position of the star in the sky (in current epoch)
+	MountCoordinates star_meas;	/// Measured position of the star in mount coordinates
+	time_t timestamp;				/// UTC timestamp of the measurement
+	AlignmentStar(const EquatorialCoordinates & ref, MountCoordinates meas,
+			time_t t) :
+			star_ref(ref), star_meas(meas), timestamp(t)
+	{
+	}
+};
 
 /**
  * Object that represents an equatorial mount with two perpendicular axis called RA and Dec.
@@ -24,18 +51,19 @@ protected:
 
 	UTCClock &clock; /// Clock
 
+	Mutex mutex;
+
 	LocationCoordinates location;   /// Current location (GPS coordinates)
 	bool south;	/// If we are in south semisphere
 	MountCoordinates curr_pos; /// Current Position in mount coordinates (offset from the index positions)
 	EquatorialCoordinates curr_pos_eq; /// Current Position in the equatorial coordinates (absolute pointing direction in the sky)
+	nudgedir_t curr_nudge_dir;
 
 	pierside_t pier_side;      /// Side of pier. 1: East
 	IndexOffset offset; /// Offset in DEC and RA(HA) axis index position
 	AzimuthalCoordinates pa;    /// Alt-azi coordinate of the actual polar axis
 	Transformation pa_trans;
 	double cone_value; /// Non-orthogonality between the two axis, or cone value.
-
-	void update_position();
 
 public:
 
@@ -76,23 +104,87 @@ public:
 	 */
 	void stop();
 
+	/** BLOCKING. Cannot be called in ISR.
+	 * Call stop of the Axis objects and wait until they are stopped.
+	 * @note This function can be called from any context (including ISR) to perform a soft stop of the mount
+	 */
+	void stopWait();
+
 	/**
 	 * Get current equatorial coordinates
+	 * @return current equatorial coordinates
 	 */
 	EquatorialCoordinates getEquatorialCoordinates()
 	{
-		update_position();
+		updatePosition();
 		return curr_pos_eq;
 	}
 
 	/**
+	 * Get current mount coordinates
+	 * @return current mount coordinates
+	 */
+	MountCoordinates getMountCoordinates()
+	{
+		updatePosition();
+		return curr_pos;
+	}
+
+	/**
+	 * Make an alignment star object using the provided reference star, current mount position, and current time
+	 * @param star_ref Reference star position
+	 * @return AlignmentStar object representing the alignment star
+	 */
+	AlignmentStar makeAlignmentStar(const EquatorialCoordinates star_ref)
+	{
+		updatePosition();
+		return AlignmentStar(star_ref, curr_pos, clock.getTime());
+	}
+
+	/**
+	 * Align the current mount using an array of alignment stars. Support up to 10 stars.
+	 * @note If n=1, will only correct for Index offset
+	 * If n=2, will correct for index offset and polar misalignment
+	 * If n>=3, will correct for index offset, pa misalignment and cone error
+	 * @param n # of alignment stars to use
+	 * @param as Array of alignment stars
+	 * @return osOK if successfully converged and updated the values
+	 */
+	osStatus align(int n, const AlignmentStar as[]);
+
+	/**
 	 * Set slew rate of both axis
+	 * @param rate new speed
 	 */
 	void setSlewSpeed(double rate)
 	{
 		ra.setSlewSpeed(rate);
 		dec.setSlewSpeed(rate);
 	}
+
+	/**
+	 * Set slew rate of both axis
+	 * @param rate new speed
+	 */
+	void setAcceleration(double acc)
+	{
+		ra.setAcceleration(acc);
+		dec.setAcceleration(acc);
+	}
+
+	/**
+	 * Print current position to STDOUT. Should call updatePosition to update the current position
+	 */
+	void printPosition(FILE *stream = stdout)
+	{
+		fprintf(stream, "Mount: RA=%7.2f, DEC=%7.2f %c\n", curr_pos.ra_delta,
+				curr_pos.dec_delta,
+				(curr_pos.side == PIER_SIDE_WEST) ? 'W' : 'E');
+		fprintf(stream, "EQ:    RA=%7.2f, DEC=%7.2f\n", curr_pos_eq.ra,
+				curr_pos_eq.dec);
+	}
+
+	void updatePosition();
 };
 
 #endif /*EQUATORIALMOUNT_H_*/
