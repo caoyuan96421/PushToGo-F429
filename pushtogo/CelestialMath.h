@@ -11,6 +11,8 @@
 #include <time.h>
 #include <math.h>
 
+static const double sidereal_speed = 0.00417807462; /* deg / s */
+
 struct EquatorialCoordinates
 {
 	double dec;		// Declination

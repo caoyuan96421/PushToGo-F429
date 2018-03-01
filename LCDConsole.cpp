@@ -52,13 +52,18 @@ void LCDConsole::init(int x0, int y0, int width, int height)
 
 void LCDConsole::task_thread()
 {
+	int *buffer0 = new int[buffersize](); // Local buffer
 	// Main loop
 	while (true)
 	{
 		// Wait for update signal.
 		sem_update.wait();
-		mutex.lock(); // Lock the buffer. If any thread is still printing stuff to the buffer, this will wait for it to finish
 
+		mutex.lock(); // Lock the buffer. If any thread is still printing stuff to the buffer, this will wait for it to finish
+		memcpy(buffer0, buffer, buffersize * sizeof(*buffer)); // Copy buffer to a private one to work in
+		mutex.unlock(); // Unlock the buffer. If any thread is waiting for the mutex, it can now run (and potentially generating another update signal).
+
+		int *head0 = buffer0 + (head - buffer);
 		// clear area;
 //		lcd.SetTextColor(BG_COLOR);
 //		lcd.FillRect(x0, y0, width, height);
@@ -66,7 +71,7 @@ void LCDConsole::task_thread()
 		int line = 0, col = 0;
 		int x = x0, y = y0;
 		lcd.SetBackColor(BG_COLOR);
-		for (int *p = head, i = 0; i < buffersize; i++)
+		for (int *p = head0, i = 0; i < buffersize; i++)
 		{
 			// Set color from the buffer
 			lcd.SetTextColor((uint32_t(0xFF000000 | (*p >> 8))));
@@ -91,10 +96,9 @@ void LCDConsole::task_thread()
 				x = 0;
 			}
 			p++;
-			if (p - buffer == buffersize)
-				p = buffer; // wrap around the buffer
+			if (p - buffer0 == buffersize)
+				p = buffer0; // wrap around the buffer
 		}
-		mutex.unlock(); // Unlock the buffer. If any thread is waiting for the mutex, it can now run (and potentially generating another update signal).
 	}
 }
 

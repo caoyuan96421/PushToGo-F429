@@ -8,6 +8,10 @@
 #include "CelestialMath.h"
 
 /**
+ * EquatorialMount status
+ */
+
+/**
  * Direction of nudge
  */
 typedef enum
@@ -58,6 +62,7 @@ protected:
 	MountCoordinates curr_pos; /// Current Position in mount coordinates (offset from the index positions)
 	EquatorialCoordinates curr_pos_eq; /// Current Position in the equatorial coordinates (absolute pointing direction in the sky)
 	nudgedir_t curr_nudge_dir;
+	double nudgeSpeed;
 
 	pierside_t pier_side;      /// Side of pier. 1: East
 	IndexOffset offset; /// Offset in DEC and RA(HA) axis index position
@@ -90,7 +95,10 @@ public:
 	osStatus goTo(double ra_dest, double dec_dest);
 	osStatus goTo(EquatorialCoordinates dest);
 
-	osStatus nudgeOn(nudgedir_t);
+	osStatus startNudge(nudgedir_t);
+	osStatus stopNudge();
+
+	osStatus startTracking();
 
 	/**
 	 * Call emergency stop of the Axis objects

@@ -11,8 +11,8 @@
 #include "StepperMotor.h"
 #include <math.h>
 #include "mbed.h"
+#include "CelestialMath.h"
 
-static const double sidereal_speed = 0.00417807462f; /* deg / s */
 //#define AXIS_SLEW_SIGNAL			0x00010000
 #define AXIS_GUIDE_SIGNAL			0x00020000
 #define AXIS_STOP_SIGNAL			0x00040000
@@ -32,7 +32,7 @@ typedef enum
  */
 typedef enum
 {
-	AXIS_ROTATE_POSITIVE = 0, AXIS_ROTATE_NEGATIVE = 1
+	AXIS_ROTATE_STOP = 0, AXIS_ROTATE_POSITIVE = 1, AXIS_ROTATE_NEGATIVE = 2
 } axisrotdir_t;
 
 /** General Rotating Axis class

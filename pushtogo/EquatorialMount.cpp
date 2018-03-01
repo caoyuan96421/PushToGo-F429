@@ -6,7 +6,7 @@
 EquatorialMount::EquatorialMount(Axis& ra, Axis& dec, UTCClock& clk,
 		LocationCoordinates loc) :
 		ra(ra), dec(dec), clock(clk), location(loc), curr_pos(0, 0), curr_nudge_dir(
-				NUDGE_NONE), pier_side(PIER_SIDE_EAST), offset(0, 0), pa(
+				NUDGE_NONE), nudgeSpeed(0), pier_side(PIER_SIDE_EAST), offset(0, 0), pa(
 				loc.lat, 0), cone_value(0)
 {
 	south = loc.lat < 0.0;
@@ -25,6 +25,11 @@ osStatus EquatorialMount::goTo(double ra_dest, double dec_dest)
 
 osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 {
+	if (status != MOUNT_STOPPED)
+	{
+		debug("EM: goTo requested while mount is not stopped.\n");
+		return osErrorParameter;
+	}
 	debug_if(EM_DEBUG, "EM: goTo\n");
 	debug_if(EM_DEBUG, "dest ra=%.2f, dec=%.2f\n", dest.ra, dest.dec);
 	LocalEquatorialCoordinates dest_local =
@@ -56,11 +61,13 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 					AXIS_ROTATE_POSITIVE : AXIS_ROTATE_NEGATIVE;
 
 	debug_if(EM_DEBUG, "EM: start slewing\n");
+	status = MOUNT_SLEWING;
 	ra.startSlewTo(ra_dir, dest_mount.ra_delta);
 	dec.startSlewTo(dec_dir, dest_mount.dec_delta);
 
 	ra.waitForSlew();
 	dec.waitForSlew();
+	status = MOUNT_STOPPED;
 	debug_if(EM_DEBUG, "EM: slewing finished\n");
 
 	updatePosition(); // Update current position
@@ -69,6 +76,182 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 		printPosition();
 
 	return osOK;
+}
+
+osStatus EquatorialMount::startTracking()
+{
+	if (status != MOUNT_STOPPED)
+	{
+		debug("EM: tracking requested while mount is not stopped.\n");
+		return osErrorParameter;
+	}
+	axisrotdir_t ra_dir = AXIS_ROTATE_POSITIVE; // Tracking is always going to positive hour angle direction, which is defined as positive.
+	status = MOUNT_TRACKING;
+	return ra.startTracking(ra_dir);
+}
+
+osStatus EquatorialMount::startNudge(nudgedir_t newdir)
+{ // Update new status
+	if (newdir == NUDGE_NONE) // Stop nudging
+	{
+		if (status == MOUNT_NUDGING)
+		{
+			// Stop the mount
+			stopWait();
+		}
+		else if (status == MOUNT_NUDGING_TRACKING)
+		{
+			// Get to tracking state
+			stopWait();
+			startTracking();
+		}
+	}
+	else
+	{
+		osStatus s;
+		updatePosition(); // Update current position, because we need to know the current pier side
+		bool ra_changed = false, dec_changed = false;
+		axisrotdir_t ra_dir, dec_dir;
+		if ((status & MOUNT_NUDGING) == 0){
+			// Initial nudge
+			curr_nudge_dir = NUDGE_NONE; //Make sure the current nudging direction is cleared
+			nudgeSpeed = ra.getSlewSpeed(); // Get nudge speed and use it for ALL following nudge operations, until a fresh one is started.
+		}
+		// see what has changed
+		if ((curr_nudge_dir & (NUDGE_WEST | NUDGE_EAST))
+				!= (newdir & (NUDGE_WEST | NUDGE_EAST)))
+		{
+			// If something on east/west has changed, we need to stop the RA axis (or maybe enable it later to switch direction)
+			ra_changed = true;
+			if (newdir & NUDGE_EAST)
+			{
+				// Nudge east
+				ra_dir = AXIS_ROTATE_NEGATIVE;
+			}
+			else if (newdir & NUDGE_WEST)
+			{
+				// Nudge west
+				ra_dir = AXIS_ROTATE_POSITIVE;
+			}
+			else
+			{
+				ra_dir = AXIS_ROTATE_STOP;
+			}
+		}
+		if ((curr_nudge_dir & (NUDGE_SOUTH | NUDGE_NORTH))
+				!= (newdir & (NUDGE_SOUTH | NUDGE_NORTH)))
+		{
+			// If something on east/west has changed, we need to stop the RA axis (or maybe enable it later to switch direction)
+			dec_changed = true;
+			if (newdir & NUDGE_NORTH)
+			{
+				// Nudge north
+				dec_dir =
+						(curr_pos.side == PIER_SIDE_WEST) ?
+								AXIS_ROTATE_NEGATIVE : AXIS_ROTATE_POSITIVE;
+			}
+			else if (newdir & NUDGE_SOUTH)
+			{
+				// Nudge south
+				dec_dir =
+						(curr_pos.side == PIER_SIDE_WEST) ?
+								AXIS_ROTATE_POSITIVE : AXIS_ROTATE_NEGATIVE;
+			}
+			else
+			{
+				dec_dir = AXIS_ROTATE_STOP;
+			}
+		}
+		curr_nudge_dir = newdir;
+
+		// Request stop as necessary
+		if (ra_changed)
+			ra.stop();
+		if (dec_changed)
+			dec.stop();
+
+		// Wait for stop together
+		while ((ra_changed && ra.getStatus() != AXIS_STOPPED)
+				|| (dec_changed && dec.getStatus() != AXIS_STOPPED))
+		{
+			Thread::yield();
+		}
+
+		// DEC axis is ok to start regardless of tracking state
+		if (dec_changed && dec_dir != AXIS_ROTATE_STOP)
+		{
+			if ((s = dec.startSlewingIndefinite(dec_dir)) != osOK)
+				return s;
+		}
+
+		// Now RA
+		if (ra_changed)
+		{
+			if (status & MOUNT_TRACKING)
+			{ // In tracking mode now
+				if (ra_dir == AXIS_ROTATE_STOP)
+				{ // resume tracking
+					if ((s = ra.startTracking(AXIS_ROTATE_POSITIVE)) != osOK)
+						return s; // Tracking is always in positive RA
+				}
+				else
+				{
+					// This is the complicated part
+					double trackSpeed = ra.getTrackSpeedSidereal()
+							* sidereal_speed;
+					debug_if(EM_DEBUG, "EM: ra, ns=%f, ts=%f\n", nudgeSpeed,
+							trackSpeed);
+					if (ra_dir == AXIS_ROTATE_POSITIVE)
+					{
+						// Same direction as tracking
+						ra.setSlewSpeed(nudgeSpeed + trackSpeed);
+						if ((s = ra.startSlewingIndefinite(AXIS_ROTATE_POSITIVE))
+								!= osOK)
+							return s;
+					}
+					else if (nudgeSpeed < trackSpeed)
+					{ // ra_dir == AXIS_ROTATE_NEGATIVE
+					  // Partially canceling the tracking speed
+						ra.setSlewSpeed(trackSpeed - nudgeSpeed);
+						if ((s = ra.startSlewingIndefinite(AXIS_ROTATE_POSITIVE))
+								!= osOK)
+							return s;
+					}
+					else if (nudgeSpeed > trackSpeed)
+					{						// ra_dir == AXIS_ROTATE_NEGATIVE
+											// Direction inverted
+						ra.setSlewSpeed(nudgeSpeed - trackSpeed);
+						if ((s = ra.startSlewingIndefinite(AXIS_ROTATE_NEGATIVE))
+								!= osOK)
+							return s;
+					}
+					// else would be nudgeSpeed == trackSpeed, and we don't need to start the RA Axis
+				}
+			}
+			else
+			{
+				// In non-tracking mode
+				if (ra_dir != AXIS_ROTATE_STOP)
+				{
+					if ((s = ra.startSlewingIndefinite(ra_dir)) != osOK)
+						return s;
+				}
+			}
+		}
+
+		// Update status
+		if (status & MOUNT_TRACKING)
+			status = MOUNT_NUDGING_TRACKING;
+		else
+			status = MOUNT_NUDGING;
+	}
+
+	return osOK;
+}
+
+osStatus EquatorialMount::stopNudge()
+{
+	return startNudge(NUDGE_NONE);
 }
 
 void EquatorialMount::updatePosition()
@@ -104,7 +287,8 @@ void EquatorialMount::emergencyStop()
 {
 	ra.emergency_stop();
 	dec.emergency_stop();
-	curr_nudge_dir = NUDGE_NONE; // just to make sure
+	status = MOUNT_STOPPED;
+	curr_nudge_dir = NUDGE_NONE;
 }
 
 void EquatorialMount::stop()
@@ -113,7 +297,7 @@ void EquatorialMount::stop()
 		ra.stop();
 	if (dec.getStatus() != AXIS_STOPPED)
 		dec.stop();
-	curr_nudge_dir = NUDGE_NONE; // just to make sure
+	status = MOUNT_STOPPED;
 }
 
 void EquatorialMount::stopWait()
@@ -127,69 +311,7 @@ void EquatorialMount::stopWait()
 	{
 		Thread::yield();
 	}
-	curr_nudge_dir = NUDGE_NONE; // just to make sure
-}
-
-osStatus EquatorialMount::nudgeOn(nudgedir_t newdir)
-{
-	osStatus s;
-	updatePosition(); // Update current position, because we need to know the current pier side
-	// see what has changed
-	if ((curr_nudge_dir & (NUDGE_WEST | NUDGE_EAST))
-			!= (newdir & (NUDGE_WEST | NUDGE_EAST)))
-	{
-		// If something on east/west has changed, we need to stop the RA axis (or maybe enable it later to switch direction)
-		if (ra.getStatus() != AXIS_STOPPED)
-			ra.stop();
-		while (ra.getStatus() != AXIS_STOPPED)
-		{
-			Thread::yield();
-		}
-		if (newdir & NUDGE_EAST)
-		{
-			// Nudge east
-			if ((s = ra.startSlewingIndefinite(AXIS_ROTATE_NEGATIVE)) != osOK)
-				return s;
-		}
-		else if (newdir & NUDGE_WEST)
-		{
-			// Nudge west
-			if ((s = ra.startSlewingIndefinite(AXIS_ROTATE_POSITIVE)) != osOK)
-				return s;
-		}
-	}
-	if ((curr_nudge_dir & (NUDGE_SOUTH | NUDGE_NORTH))
-			!= (newdir & (NUDGE_SOUTH | NUDGE_NORTH)))
-	{
-		// If something on east/west has changed, we need to stop the RA axis (or maybe enable it later to switch direction)
-		if (dec.getStatus() != AXIS_STOPPED)
-			dec.stop();
-		while (dec.getStatus() != AXIS_STOPPED)
-		{
-			Thread::yield();
-		}
-		if (newdir & NUDGE_NORTH)
-		{
-			axisrotdir_t dir =
-					(curr_pos.side == PIER_SIDE_WEST) ?
-							AXIS_ROTATE_NEGATIVE : AXIS_ROTATE_POSITIVE;
-			// Nudge east
-			if ((s = dec.startSlewingIndefinite(dir)) != osOK)
-				return s;
-		}
-		else if (newdir & NUDGE_SOUTH)
-		{
-			axisrotdir_t dir =
-					(curr_pos.side == PIER_SIDE_WEST) ?
-							AXIS_ROTATE_POSITIVE : AXIS_ROTATE_NEGATIVE;
-			// Nudge west
-			if ((s = dec.startSlewingIndefinite(dir)) != osOK)
-				return s;
-		}
-	}
-
-	curr_nudge_dir = newdir;
-	return osOK;
+	status = MOUNT_STOPPED;
 }
 
 osStatus EquatorialMount::align(int n, const AlignmentStar as[])

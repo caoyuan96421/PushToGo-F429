@@ -46,6 +46,9 @@ void Axis::task(Axis *p)
 		debug_if(AXIS_DEBUG, "%s: MSG %d %f %d 0x%8x\n", p->axisName, signal,
 				value, dir);
 
+		if (dir == AXIS_ROTATE_STOP) // Useless command
+			continue;
+
 		/*Check the type of the signal, and start corresponding operations*/
 		switch (signal)
 		{
@@ -102,7 +105,9 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 	Thread::signal_clr(AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL); // Clear flags
 	status = AXIS_SLEWING;
 	currentDirection = dir;
-	stepdir_t sd = (stepdir_t) (dir ^ invert);
+	stepdir_t sd =
+			((dir == AXIS_ROTATE_POSITIVE) ^ invert) ?
+					STEP_FORWARD : STEP_BACKWARD;
 
 	/* Calculate the angle to rotate*/
 	bool skip_slew = false;
@@ -182,6 +187,9 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		if (ramp_steps < 1)
 			ramp_steps = 1;
 
+		debug_if(AXIS_DEBUG, "%s: accelerate in %d steps\n", axisName,
+				ramp_steps); // TODO: DEBUG
+
 		for (unsigned int i = 1; i <= ramp_steps; i++)
 		{
 			currentSpeed = stepper->setFrequency(
@@ -240,8 +248,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		if (ramp_steps < 1)
 			ramp_steps = 1;
 
-		debug_if(AXIS_DEBUG, "%s: decelerate in %d steps\n", axisName,
-				ramp_steps); // TODO: DEBUG
+		debug_if(AXIS_DEBUG, "%s: decelerate in %d steps from %f\n", axisName,
+				ramp_steps, endSpeed); // TODO: DEBUG
 
 		for (unsigned int i = ramp_steps - 1; i >= 1; i--)
 		{
@@ -289,7 +297,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		while (--nTry && fabsf(diff) > MBED_CONF_PUSHTOGO_CORRECTION_TOLERANCE)
 		{
 			/*Determine correction direction and time*/
-			sd = (stepdir_t) ((diff > 0.0) ^ invert);
+			sd = ((diff > 0.0) ^ invert) ? STEP_BACKWARD : STEP_FORWARD;
 
 			/*Perform correction*/
 			currentSpeed = stepper->setFrequency(stepsPerDeg * correctionSpeed)
@@ -339,7 +347,9 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 void Axis::track(axisrotdir_t dir)
 {
 	track_mode();
-	stepdir_t sd = (stepdir_t) (dir ^ invert);
+	stepdir_t sd =
+			((dir == AXIS_ROTATE_POSITIVE) ^ invert) ?
+					STEP_FORWARD : STEP_BACKWARD;
 	currentSpeed = stepper->setFrequency(trackSpeed * stepsPerDeg)
 			/ stepsPerDeg;
 	currentDirection = dir;

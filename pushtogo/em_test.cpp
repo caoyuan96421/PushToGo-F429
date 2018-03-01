@@ -12,7 +12,7 @@
 #include "RTCClock.h"
 
 const float stepsPerDeg = MBED_CONF_PUSHTOGO_STEPS_PER_REVOLUTION
-		* MBED_CONF_PUSHTOGO_REDUCTION_FACTOR / 360.0f;
+		* MBED_CONF_PUSHTOGO_REDUCTION_FACTOR / 360.0f * 4;
 
 void stop(EquatorialMount *eq)
 {
@@ -39,7 +39,7 @@ void test_em()
 
 	button.rise(callback(stop, &eq));
 
-	eq.setSlewSpeed(6.0);
+	eq.setSlewSpeed(4);
 	eq.setAcceleration(4.0);
 
 	debug("****************\nEQ Test 1: Slew to RA=0, DEC=0\n");
@@ -53,34 +53,83 @@ void test_em()
 
 	wait(1);
 	debug("****************\nEQ Test 3: Nudge east for 5s\n");
-	eq.nudgeOn(NUDGE_EAST);
+	eq.startNudge(NUDGE_EAST);
 	wait(5);
-	eq.nudgeOn(NUDGE_NONE);
+	eq.stopWait();
 	eq.updatePosition();
 	eq.printPosition();
 
 	wait(1);
 	debug("****************\nEQ Test 4: Nudge E/W/S/N for 5s\n");
 	debug("E\n");
-	eq.nudgeOn(NUDGE_EAST);
+	eq.startNudge(NUDGE_EAST);
 	wait(5);
 	debug("NE\n");
-	eq.nudgeOn(NUDGE_NORTHEAST);
+	eq.startNudge(NUDGE_NORTHEAST);
 	wait(5);
 	debug("SE\n");
-	eq.nudgeOn(NUDGE_SOUTHEAST);
+	eq.startNudge(NUDGE_SOUTHEAST);
 	wait(5);
 	debug("NW\n");
-	eq.nudgeOn(NUDGE_NORTHWEST);
+	eq.startNudge(NUDGE_NORTHWEST);
 	wait(5);
 	debug("S\n");
-	eq.nudgeOn(NUDGE_SOUTH);
+	eq.startNudge(NUDGE_SOUTH);
 	wait(5);
 
 //	eq.nudgeOn(NUDGE_NONE);
-	eq.stopWait();
+	eq.stopNudge();
 	eq.updatePosition();
 	eq.printPosition();
+
+	wait(1);
+	debug("****************\nEQ Test 5: Tracking and nudging\n");
+	eq.setSlewSpeed(2 * sidereal_speed);
+	eq.startTracking();
+	wait(3);
+	eq.startNudge(NUDGE_EAST);
+	wait(3);
+	eq.startNudge(NUDGE_WEST);
+	wait(3);
+	wait(3);
+	eq.startNudge(NUDGE_EAST);
+	wait(3);
+	eq.startNudge(NUDGE_WEST);
+	eq.stopNudge();
+	wait(4);
+	eq.stopWait();
+
+	wait(2);
+	eq.setSlewSpeed(0.5 * sidereal_speed);
+	eq.startTracking();
+	wait(3);
+	eq.startNudge(NUDGE_EAST);
+	wait(3);
+	eq.startNudge(NUDGE_WEST);
+	wait(3);
+	eq.startNudge(NUDGE_EAST);
+	wait(3);
+	eq.startNudge(NUDGE_WEST);
+	wait(3);
+	eq.stopNudge();
+	wait(4);
+	eq.stopWait();
+
+	wait(2);
+	eq.setSlewSpeed(16 * sidereal_speed);
+	eq.startTracking();
+	wait(3);
+	eq.startNudge(NUDGE_EAST);
+	wait(3);
+	eq.startNudge(NUDGE_WEST);
+	wait(3);
+	eq.startNudge(NUDGE_EAST);
+	wait(3);
+	eq.startNudge(NUDGE_WEST);
+	wait(3);
+	eq.stopNudge();
+	wait(4);
+	eq.stopWait();
 
 	wait(1);
 	debug("****************\nEQ Test Finished.\n");

@@ -55,7 +55,7 @@
 #define MBED_LFS_READ_SIZE                                64                                                                                                    // set by library:littlefs
 #define MBED_CONF_PUSHTOGO_MAX_CORRECTION_ANGLE           5.0                                                                                                   // set by library:pushtogo
 #define MBED_CONF_PLATFORM_DEFAULT_SERIAL_BAUD_RATE       9600                                                                                                  // set by library:platform
-#define MBED_CONF_PUSHTOGO_CURRENT_SLEW                   1.2                                                                                                   // set by library:pushtogo
+#define MBED_CONF_PUSHTOGO_CURRENT_SLEW                   1.5                                                                                                   // set by library:pushtogo
 #define MBED_CONF_RTOS_PRESENT                            1                                                                                                     // set by library:rtos
 #define MBED_CONF_EVENTS_SHARED_EVENTSIZE                 256                                                                                                   // set by library:events
 #define CLOCK_SOURCE_USB                                  1                                                                                                     // set by target:DISCO_F429ZI

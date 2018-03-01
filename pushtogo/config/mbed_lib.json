@@ -28,7 +28,7 @@
         },
         "current_slew": {
             "help": "If using AdaptiveStepperMotor interface, this driving current will be used for slewing",
-            "value": "1.2"
+            "value": "1.5"
         },
         "current_track": {
             "help": "If using AdaptiveStepperMotor interface, this driving current will be used for tracking",

@@ -46,7 +46,8 @@ AMIS30543StepperDriver::AMIS30543StepperDriver(SPI *spi, PinName cs,
 AMIS30543StepperDriver::~AMIS30543StepperDriver()
 {
 	printf("AMIS Shutdown\n");
-	printf("CR2: 0x%2x\n", readReg(CR2));
+	writeReg(CR2, 0x00); // MOTEN = 0, stop driving the motor
+	writeReg(CR2, 0x00); // MOTEN = 0, stop driving the motor
 	writeReg(CR2, 0x00); // MOTEN = 0, stop driving the motor
 }
 
@@ -76,7 +77,6 @@ uint8_t AMIS30543StepperDriver::readReg(regaddr_t addr)
 
 void AMIS30543StepperDriver::start(stepdir_t dir)
 {
-	printf("CR2: 0x%2x\n", readReg(CR2));
 	/*Set Direction*/
 	if (status == IDLE)
 	{
