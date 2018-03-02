@@ -24,52 +24,52 @@ void blink()
 	}
 }
 
-Thread printer_th(osPriorityNormal, 2048, NULL, "Printer Thread");
-/* Mail */
-typedef struct
-{
-	char msg[128];
-} mail_t;
-
-typedef Mail<mail_t, 256> MB_t;
-MB_t mbox;
-Serial pc(USBTX, USBRX, 115200);
-
-Timer tim;
-void printer(MB_t *mbox)
-{
-	while (true)
-	{
-		mail_t *m = (mail_t *) mbox->get().value.p;
-		pc.printf("%s\r\n", m->msg);
-		mbox->free(m);
-	}
-}
+//Thread printer_th(osPriorityNormal, 2048, NULL, "Printer Thread");
+///* Mail */
+//typedef struct
+//{
+//	char msg[128];
+//} mail_t;
+//
+//typedef Mail<mail_t, 256> MB_t;
+//MB_t mbox;
+//Serial pc(USBTX, USBRX, 115200);
+//
+//Timer tim;
+//void printer(MB_t *mbox)
+//{
+//	while (true)
+//	{
+//		mail_t *m = (mail_t *) mbox->get().value.p;
+//		pc.printf("%s\r\n", m->msg);
+//		mbox->free(m);
+//	}
+//}
 
 /**
  * Printf for debugging use. Takes about 20us for each call. Can be called from any context
  */
-void xprintf(const char* format, ...)
-{
-	uint16_t len;
-	va_list argptr;
-	va_start(argptr, format);
-
-	mail_t *m = mbox.alloc();
-	len = sprintf(m->msg, "%6d>", tim.read_ms());
-	len += vsprintf(&m->msg[len], format, argptr);
-	mbox.put(m);
-
-	va_end(argptr);
-}
+//void xprintf(const char* format, ...)
+//{
+//	uint16_t len;
+//	va_list argptr;
+//	va_start(argptr, format);
+//
+//	mail_t *m = mbox.alloc();
+//	len = sprintf(m->msg, "%6d>", tim.read_ms());
+//	len += vsprintf(&m->msg[len], format, argptr);
+//	mbox.put(m);
+//
+//	va_end(argptr);
+//}
 
 extern void test_stepper();
 extern void testmath();
 extern void test_em();
 extern void test_deapply();
 
-SDBlockDevice sdb(PA_7, PB_4, PA_5, PC_13);
-FATFileSystem fs("fs");
+//SDBlockDevice sdb(PA_7, PB_4, PA_5, PC_13);
+//FATFileSystem fs("fs");
 
 char s[128];
 
@@ -86,29 +86,29 @@ int main()
 	printf("System initialized.\n");
 
 	th.start(blink);
-	tim.start();
-	printer_th.start(callback(printer, &mbox));
-	xprintf("System initialized");
-
-	if (fs.mount(&sdb) == 0)
-	{
-		FILE *fp = fopen("/fs/Hello.txt", "r");
-		if (fp == NULL)
-		{
-			xprintf("Could not open file for write\n");
-		}
-		else
-		{
-			fgets(s, 128, fp);
-			xprintf("%s", s);
-			fclose(fp);
-		}
-
-	}
-	else
-	{
-		xprintf("FS failed to load SD card.");
-	}
+//	tim.start();
+//	printer_th.start(callback(printer, &mbox));
+//	xprintf("System initialized");
+//
+//	if (fs.mount(&sdb) == 0)
+//	{
+//		FILE *fp = fopen("/fs/Hello.txt", "r");
+//		if (fp == NULL)
+//		{
+//			xprintf("Could not open file for write\n");
+//		}
+//		else
+//		{
+//			fgets(s, 128, fp);
+//			xprintf("%s", s);
+//			fclose(fp);
+//		}
+//
+//	}
+//	else
+//	{
+//		xprintf("FS failed to load SD card.");
+//	}
 
 
 //	testmath();

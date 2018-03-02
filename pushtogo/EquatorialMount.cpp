@@ -6,8 +6,8 @@
 EquatorialMount::EquatorialMount(Axis& ra, Axis& dec, UTCClock& clk,
 		LocationCoordinates loc) :
 		ra(ra), dec(dec), clock(clk), location(loc), curr_pos(0, 0), curr_nudge_dir(
-				NUDGE_NONE), nudgeSpeed(0), pier_side(PIER_SIDE_EAST), offset(0, 0), pa(
-				loc.lat, 0), cone_value(0)
+				NUDGE_NONE), nudgeSpeed(0), pier_side(PIER_SIDE_EAST), offset(0,
+				0), pa(loc.lat, 0), cone_value(0)
 {
 	south = loc.lat < 0.0;
 	// Get initial transformation
@@ -94,15 +94,16 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 { // Update new status
 	if (newdir == NUDGE_NONE) // Stop nudging
 	{
-		if (status == MOUNT_NUDGING)
+		mountstatus_t oldstatus = status;
+		stopWait(); // Stop the mount
+		if (oldstatus == MOUNT_NUDGING)
 		{
 			// Stop the mount
-			stopWait();
 		}
-		else if (status == MOUNT_NUDGING_TRACKING)
+		else if (oldstatus == MOUNT_NUDGING_TRACKING)
 		{
 			// Get to tracking state
-			stopWait();
+			ra.setSlewSpeed(nudgeSpeed); // restore the slew rate of RA
 			startTracking();
 		}
 	}
@@ -112,12 +113,13 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 		updatePosition(); // Update current position, because we need to know the current pier side
 		bool ra_changed = false, dec_changed = false;
 		axisrotdir_t ra_dir, dec_dir;
-		if ((status & MOUNT_NUDGING) == 0){
+		if ((status & MOUNT_NUDGING) == 0)
+		{
 			// Initial nudge
 			curr_nudge_dir = NUDGE_NONE; //Make sure the current nudging direction is cleared
-			nudgeSpeed = ra.getSlewSpeed(); // Get nudge speed and use it for ALL following nudge operations, until a fresh one is started.
+			nudgeSpeed = ra.getSlewSpeed(); // Get nudge speed and use it for ALL following nudge operations, until the nudge finishes
 		}
-		// see what has changed
+		// see what has changed in RA
 		if ((curr_nudge_dir & (NUDGE_WEST | NUDGE_EAST))
 				!= (newdir & (NUDGE_WEST | NUDGE_EAST)))
 		{
@@ -138,6 +140,7 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 				ra_dir = AXIS_ROTATE_STOP;
 			}
 		}
+		// see what has changed in DEC
 		if ((curr_nudge_dir & (NUDGE_SOUTH | NUDGE_NORTH))
 				!= (newdir & (NUDGE_SOUTH | NUDGE_NORTH)))
 		{

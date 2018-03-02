@@ -10,8 +10,7 @@
 #include <AMIS30543StepperDriver.h>
 #include "mbed.h"
 
-const float stepsPerDeg = MBED_CONF_PUSHTOGO_STEPS_PER_REVOLUTION
-		* MBED_CONF_PUSHTOGO_REDUCTION_FACTOR / 360.0f;
+const float stepsPerDeg = 400 * 4 / 2;
 
 void report_stepper(Axis *axis)
 {
@@ -36,7 +35,9 @@ void test_stepper()
 
 	SPI spi4(PE_6, PE_5, PE_2);
 	AMIS30543StepperDriver stepper_real(&spi4, PE_4, PC_8);
-	AdaptiveAxis axis(stepsPerDeg, &stepper_real, false, "DEC Axis");
+	AdaptiveAxis axis(stepsPerDeg, &stepper_real,
+			TelescopeConfiguration::getDefaultConfiguration(), false,
+			"DEC Axis");
 	InterruptIn button(USER_BUTTON);
 
 	Timeout to, t2;

@@ -1,8 +1,8 @@
-#include "mbed.h"
-#include "UTCClock.h"
-
 #ifndef RTCCLOCK_H_
 #define RTCCLOCK_H_
+
+#include "mbed.h"
+#include "UTCClock.h"
 /**
  * RTCClock class implements the UTCClock interface and provides time through the MBED interface to hardware RTC found on most ARM MCUs
  */

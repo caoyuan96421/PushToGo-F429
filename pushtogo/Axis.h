@@ -12,6 +12,7 @@
 #include <math.h>
 #include "mbed.h"
 #include "CelestialMath.h"
+#include "TelescopeConfiguration.h"
 
 //#define AXIS_SLEW_SIGNAL			0x00010000
 #define AXIS_GUIDE_SIGNAL			0x00020000
@@ -49,10 +50,10 @@ public:
 	 * @param stepper Pointer to stepper driver to use
 	 * @param invert Whether the stepper direction should be inverted
 	 */
-	Axis(double stepsPerDeg, StepperMotor *stepper, bool invert = false,
-			const char *name = "Axis") :
+	Axis(double stepsPerDeg, StepperMotor *stepper,TelescopeConfiguration &config, bool invert = false,
+			 const char *name = "Axis") :
 			stepsPerDeg(stepsPerDeg), stepper(stepper), invert(invert), axisName(
-					name), currentSpeed(0), currentDirection(
+					name), config(config), currentSpeed(0), currentDirection(
 					AXIS_ROTATE_POSITIVE), slewSpeed(2), trackSpeed(
 					sidereal_speed), correctionSpeed(32.0f * sidereal_speed), guideSpeed(
 					0.5f * sidereal_speed), acceleration(1), status(
@@ -332,6 +333,7 @@ protected:
 	StepperMotor *stepper; ///Pointer to stepper motor
 	bool invert;
 	const char *axisName;
+	TelescopeConfiguration &config;
 
 	/*Runtime values*/
 	volatile double currentSpeed; /// Current speed in deg/s

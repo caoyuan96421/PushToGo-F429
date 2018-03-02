@@ -25,6 +25,10 @@ public:
 	{
 	}
 
+	mountstatus_t getStatus()
+	{
+		return status;
+	}
 };
 
 #endif /*MOUNT_H_*/

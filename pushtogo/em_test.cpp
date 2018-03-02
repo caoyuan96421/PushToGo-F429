@@ -10,30 +10,17 @@
 #include "EquatorialMount.h"
 #include "AdaptiveAxis.h"
 #include "RTCClock.h"
-
-const float stepsPerDeg = MBED_CONF_PUSHTOGO_STEPS_PER_REVOLUTION
-		* MBED_CONF_PUSHTOGO_REDUCTION_FACTOR / 360.0f * 4;
+#include "telescope_hardware.h"
 
 void stop(EquatorialMount *eq)
 {
 	eq->stop();
 }
 
-SPI ra_spi(PC_12, PC_11, PB_3_ALT0);
-SPI dec_spi(PE_6, PE_5, PE_2);
-
 void test_em()
 {
-	AMIS30543StepperDriver ra_stepper(&ra_spi, PE_3, PB_7);
-	AMIS30543StepperDriver dec_stepper(&dec_spi, PE_4, PC_8);
 
-	AdaptiveAxis ra_axis(stepsPerDeg, &ra_stepper, false, "RA_Axis");
-	AdaptiveAxis dec_axis(stepsPerDeg, &dec_stepper, false, "DEC_Axis");
-
-	RTCClock clock;
-
-	EquatorialMount eq(ra_axis, dec_axis, clock,
-			LocationCoordinates(42.0, -73.0));
+	EquatorialMount &eq = telescopeHardwareInit();
 
 	InterruptIn button(USER_BUTTON);
 

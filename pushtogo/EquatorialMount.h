@@ -43,6 +43,19 @@ struct AlignmentStar
 	}
 };
 
+struct EqCalibration
+{
+	LocationCoordinates location;
+	IndexOffset offset;
+	AzimuthalCoordinates pa;
+	double cone;
+	EqCalibration(const LocationCoordinates &loc, const IndexOffset &off,
+			const AzimuthalCoordinates p, double c) :
+			location(loc), offset(off), pa(p), cone(c)
+	{
+	}
+};
+
 /**
  * Object that represents an equatorial mount with two perpendicular axis called RA and Dec.
  */

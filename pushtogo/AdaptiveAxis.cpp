@@ -9,23 +9,23 @@
 
 void AdaptiveAxis::slew_mode()
 {
-	this->stepper->setMicroStep(MBED_CONF_PUSHTOGO_MICROSTEP_SLEW);
-	this->stepper->setCurrent(MBED_CONF_PUSHTOGO_CURRENT_SLEW);
+	this->stepper->setMicroStep(config.getMicrostepSlew());
+	this->stepper->setCurrent(config.getCurrentSlew());
 }
 
 void AdaptiveAxis::track_mode()
 {
-	this->stepper->setMicroStep(MBED_CONF_PUSHTOGO_MICROSTEP_TRACK);
-	this->stepper->setCurrent(MBED_CONF_PUSHTOGO_CURRENT_TRACK);
+	this->stepper->setMicroStep(config.getMicrostepTrack());
+	this->stepper->setCurrent(config.getCurrentTrack());
 }
 
 void AdaptiveAxis::correction_mode()
 {
-	this->stepper->setMicroStep(MBED_CONF_PUSHTOGO_MICROSTEP_CORRECTION);
-	this->stepper->setCurrent(MBED_CONF_PUSHTOGO_CURRENT_CORRECTION);
+	this->stepper->setMicroStep(config.getMicrostepCorrection());
+	this->stepper->setCurrent(config.getCurrentTrack());
 }
 
 void AdaptiveAxis::idle_mode()
 {
-	this->stepper->setCurrent(MBED_CONF_PUSHTOGO_CURRENT_IDLE);
+	this->stepper->setCurrent(config.getCurrentIdle());
 }

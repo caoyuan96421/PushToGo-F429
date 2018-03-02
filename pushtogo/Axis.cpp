@@ -7,7 +7,7 @@
 
 #include <Axis.h>
 
-#define AXIS_DEBUG 1
+#define AXIS_DEBUG 0
 
 static inline double min(double x, double y)
 {
@@ -123,10 +123,10 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 	if (!indefinite)
 	{
 		// Ensure that delta is more than the minimum slewing angle, calculate the correct endSpeed and waitTime
-		if (delta > MBED_CONF_PUSHTOGO_MIN_SLEW_ANGLE)
+		if (delta > config.getMinSlewAngle())
 		{
 			/*The motion angle is decreased to ensure the correction step is in the same direction*/
-			delta = delta - 0.5 * MBED_CONF_PUSHTOGO_MIN_SLEW_ANGLE;
+			delta = delta - 0.5 * config.getMinSlewAngle();
 
 			double angleRotatedDuringAcceleration;
 
@@ -139,7 +139,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 					stepper->setFrequency(stepsPerDeg * endSpeed)
 							/ stepsPerDeg);
 			ramp_steps = (unsigned int) (endSpeed
-					/ MBED_CONF_PUSHTOGO_ACCELERATION_STEP_TIME / acceleration);
+					/ (config.getAccelerationStepTimeMs() / 1000.0)
+					/ acceleration);
 			if (ramp_steps < 1)
 				ramp_steps = 1;
 
@@ -150,7 +151,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 				double speed = stepper->setFrequency(
 						stepsPerDeg * endSpeed / ramp_steps * i) / stepsPerDeg;
 				angleRotatedDuringAcceleration += speed
-						* MBED_CONF_PUSHTOGO_ACCELERATION_STEP_TIME
+						* (config.getAccelerationStepTimeMs() / 1000.0)
 						* (i == ramp_steps ? 1 : 2); // Count both acceleration and deceleration
 			}
 
@@ -182,7 +183,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		uint32_t flags;
 		/*Acceleration*/
 		ramp_steps = (unsigned int) (endSpeed
-				/ MBED_CONF_PUSHTOGO_ACCELERATION_STEP_TIME / acceleration);
+				/ (config.getAccelerationStepTimeMs() / 1000.0) / acceleration);
 
 		if (ramp_steps < 1)
 			ramp_steps = 1;
@@ -201,7 +202,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			/*Monitor whether there is a stop/emerge stop signal*/
 			uint32_t flags = osThreadFlagsWait(
 			AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny,
-			MBED_CONF_PUSHTOGO_ACCELERATION_STEP_TIME * 1000);
+					config.getAccelerationStepTimeMs());
 
 			if (flags == osFlagsErrorTimeout)
 			{
@@ -243,7 +244,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		/*Now deceleration*/
 		endSpeed = currentSpeed;
 		ramp_steps = (unsigned int) (currentSpeed
-				/ MBED_CONF_PUSHTOGO_ACCELERATION_STEP_TIME / acceleration);
+				/ (config.getAccelerationStepTimeMs() / 1000.0) / acceleration);
 
 		if (ramp_steps < 1)
 			ramp_steps = 1;
@@ -257,7 +258,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 					stepsPerDeg * endSpeed / ramp_steps * i) / stepsPerDeg; // set and update accurate speed
 			// Wait. Now we only handle EMERGENCY STOP signal, since stop has been handled already
 			flags = osThreadFlagsWait(AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny,
-			MBED_CONF_PUSHTOGO_ACCELERATION_STEP_TIME * 1000);
+					config.getAccelerationStepTimeMs());
 
 			if (flags != osFlagsErrorTimeout)
 			{
@@ -284,7 +285,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 				angleDeg, dest); // TODO: DEBUG
 
 		double diff = remainder(angleDeg - dest, 360.0);
-		if (diff > MBED_CONF_PUSHTOGO_MAX_CORRECTION_ANGLE)
+		if (diff > config.getMaxCorrectionAngle())
 		{
 			debug(
 					"%s: correction too large: %f. Check hardware configuration.\n",
@@ -294,7 +295,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		}
 
 		int nTry = 3; // Try 3 corrections at most
-		while (--nTry && fabsf(diff) > MBED_CONF_PUSHTOGO_CORRECTION_TOLERANCE)
+		while (--nTry && fabsf(diff) > config.getCorrectionTolerance())
 		{
 			/*Determine correction direction and time*/
 			sd = ((diff > 0.0) ^ invert) ? STEP_BACKWARD : STEP_FORWARD;
@@ -308,7 +309,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			debug_if(AXIS_DEBUG,
 					"%s: correction: from %f to %f deg. time=%d ms\n", axisName,
 					angleDeg, dest, correctionTime_ms); //TODO: DEBUG
-			if (correctionTime_ms < MBED_CONF_PUSHTOGO_MIN_CORRECTION_TIME)
+			if (correctionTime_ms < config.getMinCorrectionTime())
 			{
 				break;
 			}
@@ -398,11 +399,11 @@ void Axis::track(axisrotdir_t dir)
 
 						// Clamp to maximum guide time
 						guideTime_ms = abs(guideTime_ms);
-						if (guideTime_ms > MBED_CONF_PUSHTOGO_MAX_GUIDE_TIME)
+						if (guideTime_ms > config.getMaxGuideTime())
 						{
 							debug("Axis: Guiding time too long: %d ms\n",
 									abs(guideTime_ms));
-							guideTime_ms = MBED_CONF_PUSHTOGO_MAX_GUIDE_TIME;
+							guideTime_ms = config.getMaxGuideTime();
 						}
 
 						currentSpeed = stepper->setFrequency(
