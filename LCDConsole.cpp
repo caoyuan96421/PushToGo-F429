@@ -18,7 +18,7 @@ int LCDConsole::textheight = 0, LCDConsole::textwidth = 0,
 		LCDConsole::buffersize = 0;
 int *LCDConsole::buffer, *LCDConsole::head, *LCDConsole::tail;
 Semaphore LCDConsole::sem_update(0, 1);
-Thread LCDConsole::thread;
+Thread LCDConsole::thread(osPriorityLow);
 
 LCDConsole lcd_handle_out("lcd_stdout", LCD_COLOR_WHITE);
 LCDConsole lcd_handle_err("lcd_stderr", LCD_COLOR_YELLOW);
@@ -43,7 +43,7 @@ void LCDConsole::init(int x0, int y0, int width, int height)
 	buffersize = textwidth * textheight;
 
 	// Init buffer
-	buffer = new int[buffersize](); // Will be init to zero
+	buffer = new int[buffersize]();// Will be init to zero
 	head = tail = buffer;
 
 	// Start task thread

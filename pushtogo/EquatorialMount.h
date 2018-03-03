@@ -68,7 +68,8 @@ protected:
 
 	UTCClock &clock; /// Clock
 
-	Mutex mutex;
+	Mutex mutex_update; /// Mutex to lock position updating
+	Mutex mutex_motion; /// Mutex to lock motion related functions
 
 	LocationCoordinates location;   /// Current location (GPS coordinates)
 	bool south;	/// If we are in south semisphere

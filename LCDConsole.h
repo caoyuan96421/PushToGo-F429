@@ -37,6 +37,11 @@ public:
 	 */
 	static void redirect(bool tolcd);
 
+	static LCD_DISCO_F429ZI &getLCD()
+	{
+		return lcd;
+	}
+
 	// Can initialize multiple instances
 	LCDConsole(const char *name, uint32_t color);
 	virtual ~LCDConsole()

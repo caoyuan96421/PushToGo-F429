@@ -260,7 +260,7 @@ osStatus EquatorialMount::stopNudge()
 void EquatorialMount::updatePosition()
 {
 	// Lock the mutex to avoid race condition on the current position values
-	mutex.lock();
+	mutex_update.lock();
 	curr_pos = MountCoordinates(dec.getAngleDeg(), ra.getAngleDeg());
 
 	// Determine the side of pier based on (offset) DEC axis pointing direction
@@ -283,7 +283,7 @@ void EquatorialMount::updatePosition()
 	pos_local = CelestialMath::deapplyMisalignment(pa_trans, pos_local);
 	curr_pos_eq = CelestialMath::localEquatorialToEquatorial(pos_local,
 			clock.getTime(), location);
-	mutex.unlock();
+	mutex_update.unlock();
 }
 
 void EquatorialMount::emergencyStop()
