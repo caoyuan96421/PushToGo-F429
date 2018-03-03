@@ -93,37 +93,9 @@ EquatorialMount &telescopeHardwareInit()
 	return (*eq_mount); // Return reference to eq_mount
 }
 
-/*Fix: Serial readable() doesn't work*/
-
-class FixSerial: public Serial
-{
-public:
-	FixSerial(PinName tx, PinName rx, int baud = 115200) :
-			Serial(tx, rx, baud)
-	{
-	}
-
-	virtual ~FixSerial()
-	{
-	}
-
-	short poll(short event) const
-	{
-		short ret = 0;
-		if (event & POLLIN)
-		{
-			ret |= (const_cast<FixSerial*>(this)->readable()) ? POLLIN : 0;
-		}
-		else if (event & POLLOUT)
-		{
-			ret |= POLLOUT;
-		}
-		return ret;
-	}
-};
 
 /* Serial connection */
-FixSerial pc(USBTX, USBRX, 115200);
+UARTSerial pc(USBTX, USBRX, 115200);
 
 EqMountServer *server_serial = NULL;
 
@@ -139,7 +111,9 @@ osStatus telescopeServerInit()
 
 	server_serial->bind(*eq_mount);
 
-	printf("Server initialized.\n");
+	const char *str="Server initialized.\n";
+	printf(str);
+	pc.write(str, strlen(str));
 
 	return osOK;
 }

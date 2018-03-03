@@ -63,7 +63,7 @@ public:
 		max_speed = 4;
 		acceleration_step_time_ms = 5;
 		min_slew_angle = 0.3;
-		correction_tolerance = 0.05;
+		correction_tolerance = 0.03;
 		min_correction_time = 5;
 		max_correction_angle = 5.0;
 		max_guide_time = 5000;

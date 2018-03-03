@@ -14,7 +14,7 @@ static inline double min(double x, double y)
 	return (x < y) ? x : y;
 }
 
-void Axis::task(Axis *p)
+void Axis::task()
 {
 
 	/*Main loop of RotationAxis*/
@@ -27,7 +27,7 @@ void Axis::task(Axis *p)
 		axisrotdir_t dir;
 
 		// Wait for next message
-		osEvent evt = p->task_queue.get();
+		osEvent evt = task_queue.get();
 		if (evt.status == osEventMessage)
 		{
 			/*New message arrived. Copy the data and free is asap*/
@@ -35,15 +35,15 @@ void Axis::task(Axis *p)
 			signal = message->signal;
 			value = message->value;
 			dir = message->dir;
-			p->task_pool.free(message);
+			task_pool.free(message);
 		}
 		else
 		{
 			/*Error*/
-			debug("%s: Error fetching the task queue.\n", p->axisName);
+			debug("%s: Error fetching the task queue.\n", axisName);
 			continue;
 		}
-		debug_if(AXIS_DEBUG, "%s: MSG %d %f %d 0x%8x\n", p->axisName, signal,
+		debug_if(AXIS_DEBUG, "%s: MSG %d %f %d 0x%8x\n", axisName, signal,
 				value, dir);
 
 		if (dir == AXIS_ROTATE_STOP) // Useless command
@@ -53,42 +53,42 @@ void Axis::task(Axis *p)
 		switch (signal)
 		{
 		case msg_t::SIGNAL_SLEW_TO:
-			if (p->status == AXIS_STOPPED)
+			if (status == AXIS_STOPPED)
 			{
-				p->slew(dir, value, false);
+				slew(dir, value, false);
 			}
 			else
 			{
 				debug("%s: being slewed while not in STOPPED mode.\n",
-						p->axisName);
+						axisName);
 			}
-			debug_if(0, "%s: SIG SLEW 0x%08x\n", p->axisName, Thread::gettid());
-			p->slew_finish_sem.release(); /*Send a signal so that the caller is free to run*/
+			debug_if(0, "%s: SIG SLEW 0x%08x\n", axisName, Thread::gettid());
+			slew_finish_sem.release(); /*Send a signal so that the caller is free to run*/
 			break;
 		case msg_t::SIGNAL_SLEW_INDEFINITE:
-			if (p->status == AXIS_STOPPED)
+			if (status == AXIS_STOPPED)
 			{
-				p->slew(dir, 0.0, true);
+				slew(dir, 0.0, true);
 			}
 			else
 			{
 				debug("%s: being slewed while not in STOPPED mode.\n",
-						p->axisName);
+						axisName);
 			}
 			break;
 		case msg_t::SIGNAL_TRACK:
-			if (p->status == AXIS_STOPPED)
+			if (status == AXIS_STOPPED)
 			{
-				p->track(dir);
+				track(dir);
 			}
 			else
 			{
 				debug("%s: trying to track while not in STOPPED mode.\n",
-						p->axisName);
+						axisName);
 			}
 			break;
 		default:
-			debug("%s: undefined signal %d\n", p->axisName, message->signal);
+			debug("%s: undefined signal %d\n", axisName, message->signal);
 		}
 	}
 }
@@ -461,5 +461,7 @@ Axis::~Axis()
 	}
 
 	// Terminate the task thread to prevent illegal access to destroyed objects.
-	task_thread.terminate();
+	task_thread->terminate();
+	delete task_thread;
+	delete taskName;
 }

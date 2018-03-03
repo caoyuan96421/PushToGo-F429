@@ -6,7 +6,7 @@
 #include "EquatorialMount.h"
 #include "MCULoadMeasurement.h"
 
-Thread th;
+Thread blinker_thread(osPriorityNormal, 1024, NULL, "Blinker");
 DigitalOut led1(LED1);
 //DigitalOut led1(PB_3_ALT0);
 //DigitalOut led2(PC_12);
@@ -77,17 +77,6 @@ char s[128];
 Thread test(osPriorityNormal, 16384, NULL, "test");
 
 // Instrumentation
-MCULoadMeasurement mcuload;
-void idle_hook()
-{
-	core_util_critical_section_enter();
-	mcuload.setMCUActive(false);
-	sleep_manager_lock_deep_sleep();
-	sleep();
-	sleep_manager_unlock_deep_sleep();
-	mcuload.setMCUActive(true);
-	core_util_critical_section_exit();
-}
 
 int main()
 {
@@ -97,12 +86,9 @@ int main()
 	setvbuf(stdout, NULL, _IONBF, 0);
 	setvbuf(stderr, NULL, _IONBF, 0);
 
-// Register idle_hook
-	Thread::attach_idle_hook(idle_hook);
-
 	printf("System initialized.\n");
 
-	th.start(blink);
+	blinker_thread.start(blink);
 //	tim.start();
 //	printer_th.start(callback(printer, &mbox));
 //	xprintf("System initialized");
@@ -130,10 +116,7 @@ int main()
 //	testmath();
 
 //	test_deapply();
-	test.start(test_em);
-
-	LCD_DISCO_F429ZI &lcd = LCDConsole::getLCD();
-	char buf[64];
+	test.start(test_server);
 
 	while (1)
 	{
@@ -142,16 +125,8 @@ int main()
 //		fprintf(stderr, " asdjfk jaskldfj klasdjklf jklasdf %f %lld us\n", tim.read(),
 //				tim.read_high_resolution_us() - timeNow);
 //		printf("\r%d", i++);
-		mcuload.reset();
-		Thread::wait(1000);
-		float load = mcuload.getCPUUsage();
 
-		/*Display CPU usage*/
-		lcd.SetBackColor(LCD_COLOR_BLUE);
-		lcd.SetTextColor(LCD_COLOR_WHITE);
-		sprintf(buf, "CPU Usage: %4.1f%%", load * 100);
-		lcd.DisplayStringAt(0, lcd.GetYSize() - BSP_LCD_GetFont()->Height,
-				(unsigned char*) buf, LEFT_MODE);
+		Thread::wait(1000);
 	}
 }
 

@@ -50,15 +50,15 @@ public:
 	 * @param stepper Pointer to stepper driver to use
 	 * @param invert Whether the stepper direction should be inverted
 	 */
-	Axis(double stepsPerDeg, StepperMotor *stepper,TelescopeConfiguration &config, bool invert = false,
-			 const char *name = "Axis") :
+	Axis(double stepsPerDeg, StepperMotor *stepper,
+			TelescopeConfiguration &config, bool invert = false,
+			const char *name = "Axis") :
 			stepsPerDeg(stepsPerDeg), stepper(stepper), invert(invert), axisName(
 					name), config(config), currentSpeed(0), currentDirection(
 					AXIS_ROTATE_POSITIVE), slewSpeed(2), trackSpeed(
 					sidereal_speed), correctionSpeed(32.0f * sidereal_speed), guideSpeed(
 					0.5f * sidereal_speed), acceleration(1), status(
-					AXIS_STOPPED), task_thread(osPriorityRealtime,
-			OS_STACK_SIZE, NULL, "Axis_task"), slew_finish_sem(0, 1)
+					AXIS_STOPPED), slew_finish_sem(0, 1)
 	{
 		if (stepsPerDeg <= 0)
 			error("Axis: steps per degree must be > 0");
@@ -66,8 +66,13 @@ public:
 		if (!stepper)
 			error("Axis: stepper must be defined");
 
+		taskName = new char[strlen(name) + 10];
+		strcpy(taskName, name);
+		strcat(taskName, " task");
 		/*Start the task-handling thread*/
-		task_thread.start(callback(this->task, this));
+		task_thread = new Thread(osPriorityRealtime,
+		OS_STACK_SIZE, NULL, taskName);
+		task_thread->start(callback(this, &Axis::task));
 	}
 
 	virtual ~Axis();
@@ -192,7 +197,7 @@ public:
 		{
 			return s;
 		}
-		task_thread.signal_set(AXIS_GUIDE_SIGNAL); // Signal the task thread to read the queue
+		task_thread->signal_set(AXIS_GUIDE_SIGNAL); // Signal the task thread to read the queue
 		return osOK;
 	}
 
@@ -202,7 +207,7 @@ public:
 	 */
 	void stop()
 	{
-		task_thread.signal_set(AXIS_STOP_SIGNAL);
+		task_thread->signal_set(AXIS_STOP_SIGNAL);
 	}
 
 	/**
@@ -210,7 +215,7 @@ public:
 	 */
 	void emergency_stop()
 	{
-		task_thread.signal_set(AXIS_EMERGE_STOP_SIGNAL);
+		task_thread->signal_set(AXIS_EMERGE_STOP_SIGNAL);
 	}
 
 	/** @param new angle
@@ -333,6 +338,7 @@ protected:
 	StepperMotor *stepper; ///Pointer to stepper motor
 	bool invert;
 	const char *axisName;
+	char *taskName;
 	TelescopeConfiguration &config;
 
 	/*Runtime values*/
@@ -344,13 +350,13 @@ protected:
 	double guideSpeed; /// Guide speed in deg/s. this amount will be subtracted/added to the trackSpeed, and so must be less than track speed
 	double acceleration; /// Acceleration in deg/s^2
 	volatile axisstatus_t status;
-	Thread task_thread; ///Thread for executing all lower-level tasks
+	Thread *task_thread; ///Thread for executing all lower-level tasks
 	Queue<msg_t, 16> task_queue; ///Queue of messages
 	Queue<void, 16> guide_queue; ///Guide pulse queue
 	MemoryPool<msg_t, 16> task_pool; ///MemoryPool for allocating messages
 	Semaphore slew_finish_sem;
 
-	static void task(Axis *p);
+	void task();
 
 	/*Low-level functions for internal use*/
 	void slew(axisrotdir_t dir, double dest, bool indefinite);

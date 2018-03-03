@@ -41,6 +41,12 @@ public:
 			t_active.stop();
 		}
 	}
+
+	static MCULoadMeasurement &getInstance()
+	{
+		static MCULoadMeasurement m;
+		return m;
+	}
 };
 
 #endif // MCULOADMEASUREMENT_H_

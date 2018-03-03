@@ -8,6 +8,7 @@
 #include "LCDConsole.h"
 #include <math.h>
 #include <ctype.h>
+#include "MCULoadMeasurement.h"
 
 bool LCDConsole::inited = false;
 Mutex LCDConsole::mutex;
@@ -18,12 +19,23 @@ int LCDConsole::textheight = 0, LCDConsole::textwidth = 0,
 		LCDConsole::buffersize = 0;
 int *LCDConsole::buffer, *LCDConsole::head, *LCDConsole::tail;
 Semaphore LCDConsole::sem_update(0, 1);
-Thread LCDConsole::thread(osPriorityLow);
+Thread LCDConsole::thread(osPriorityLow, OS_STACK_SIZE, NULL, "LCD Console");
 
 LCDConsole lcd_handle_out("lcd_stdout", LCD_COLOR_WHITE);
 LCDConsole lcd_handle_err("lcd_stderr", LCD_COLOR_YELLOW);
 
 #define BG_COLOR LCD_COLOR_BLACK
+
+void idle_hook()
+{
+	core_util_critical_section_enter();
+	MCULoadMeasurement::getInstance().setMCUActive(false);
+	sleep_manager_lock_deep_sleep();
+	sleep();
+	sleep_manager_unlock_deep_sleep();
+	MCULoadMeasurement::getInstance().setMCUActive(true);
+	core_util_critical_section_exit();
+}
 
 void LCDConsole::init(int x0, int y0, int width, int height)
 {
@@ -43,21 +55,37 @@ void LCDConsole::init(int x0, int y0, int width, int height)
 	buffersize = textwidth * textheight;
 
 	// Init buffer
-	buffer = new int[buffersize]();// Will be init to zero
+	buffer = new int[buffersize](); // Will be init to zero
 	head = tail = buffer;
 
 	// Start task thread
 	thread.start(task_thread);
+
+	// Register idle hook
+	Thread::attach_idle_hook(idle_hook);
+	MCULoadMeasurement::getInstance().reset();
 }
 
 void LCDConsole::task_thread()
 {
 	int *buffer0 = new int[buffersize](); // Local buffer
+	char sbuf[64];
 	// Main loop
 	while (true)
 	{
 		// Wait for update signal.
-		sem_update.wait();
+		int s = sem_update.wait(1000);
+		if (s == 0)
+		{
+			// Timeout, update CPU usage
+			lcd.SetBackColor(LCD_COLOR_BLUE);
+			lcd.SetTextColor(LCD_COLOR_WHITE);
+			sprintf(sbuf, " CPU Usage: %4.1f%% ", MCULoadMeasurement::getInstance().getCPUUsage() * 100);
+			lcd.DisplayStringAt(0, lcd.GetYSize() - BSP_LCD_GetFont()->Height,
+					(unsigned char*) sbuf, LEFT_MODE);
+			MCULoadMeasurement::getInstance().reset();
+			continue;
+		}
 
 		mutex.lock(); // Lock the buffer. If any thread is still printing stuff to the buffer, this will wait for it to finish
 		memcpy(buffer0, buffer, buffersize * sizeof(*buffer)); // Copy buffer to a private one to work in
