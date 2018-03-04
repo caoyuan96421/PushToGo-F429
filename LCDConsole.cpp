@@ -80,10 +80,23 @@ void LCDConsole::task_thread()
 			// Timeout, update CPU usage
 			lcd.SetBackColor(LCD_COLOR_BLUE);
 			lcd.SetTextColor(LCD_COLOR_WHITE);
-			sprintf(sbuf, " CPU Usage: %4.1f%% ", MCULoadMeasurement::getInstance().getCPUUsage() * 100);
+			int len = sprintf(sbuf, "Load: %4.1f%% ",
+					MCULoadMeasurement::getInstance().getCPUUsage() * 100);
 			lcd.DisplayStringAt(0, lcd.GetYSize() - BSP_LCD_GetFont()->Height,
 					(unsigned char*) sbuf, LEFT_MODE);
 			MCULoadMeasurement::getInstance().reset();
+
+			time_t t = time(NULL);
+			struct tm ts;
+			gmtime_r(&t, &ts);
+			strftime(sbuf, sizeof(sbuf), "%T, %x", &ts);
+			strcat(sbuf, " UTC"); // append
+
+			lcd.SetBackColor(0xFF00AF7F);
+			lcd.DisplayStringAt(BSP_LCD_GetFont()->Width * len,
+					lcd.GetYSize() - BSP_LCD_GetFont()->Height,
+					(unsigned char*) sbuf, LEFT_MODE);
+
 			continue;
 		}
 
