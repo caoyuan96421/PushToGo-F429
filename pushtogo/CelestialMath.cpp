@@ -76,7 +76,12 @@ LocalEquatorialCoordinates CelestialMath::azimuthalToLocalEquatorial(
 
 double CelestialMath::getGreenwichMeanSiderealTime(time_t timestamp)
 {
-	double jd = (double) timestamp * 1.1574074074074E-5 + 2440587.5; // Julian Date (J2000)
+	double jd = (double) timestamp * 1.1574074074074E-5 + 2440587.5 - 2451545.0; // Julian Date since J2000
+//	double jd0 = floor(jd - 0.5) + 0.5; // JD of previous midnight
+//	double cent = (jd - 2451545.0) / 36525;
+//	double gmst = 6.697374558 + 0.06570982441908 * (jd0 - 2451545.0)
+//			+ 1.00273790935 * (jd - jd0) * 24 + 0.000026 * cent * cent;
+//	gmst *= 15.0;
 	double gmst = 280.46061837 + 360.985647366 * jd; // Greenwich mean sidereal time (angle)
 	return remainder(gmst, 360.0);
 }
@@ -93,7 +98,7 @@ LocalEquatorialCoordinates CelestialMath::equatorialToLocalEquatorial(
 		const EquatorialCoordinates &e, time_t timestamp,
 		const LocationCoordinates &loc)
 {
-	// From phi to cphi
+// From phi to cphi
 	return LocalEquatorialCoordinates(e.dec,
 			remainder(getLocalSiderealTime(timestamp, loc) - e.ra, 360.0));
 }
@@ -102,7 +107,7 @@ EquatorialCoordinates CelestialMath::localEquatorialToEquatorial(
 		const LocalEquatorialCoordinates &a, time_t timestamp,
 		const LocationCoordinates &loc)
 {
-	// From cphi to phi
+// From cphi to phi
 	return EquatorialCoordinates(a.dec,
 			remainder(getLocalSiderealTime(timestamp, loc) - a.ha, 360.0));
 }
@@ -115,7 +120,7 @@ Transformation &CelestialMath::getMisalignedPolarAxisTransformation(
 			loc.lat * DEGREE);
 	double s1 = sin(p.azi * DEGREE), s2 = sin(p.alt * DEGREE), s3 = sin(
 			loc.lat * DEGREE);
-	// Matrix to convert from basis vectors in misaligned PA to correct PA
+// Matrix to convert from basis vectors in misaligned PA to correct PA
 	t.a11 = c1 * s2 * s3 + c2 * c3;
 	t.a12 = -s1 * s3;
 	t.a13 = -c1 * c2 * s3 + s2 * c3;
@@ -142,7 +147,7 @@ LocalEquatorialCoordinates CelestialMath::applyMisalignment(
 LocalEquatorialCoordinates CelestialMath::deapplyMisalignment(
 		const Transformation &t, const LocalEquatorialCoordinates& a)
 {
-	// the Transformation is ORTHOGONAL, T^-1 = T'
+// the Transformation is ORTHOGONAL, T^-1 = T'
 	double c1 = cos(a.dec * DEGREE), c2 = cos(a.ha * DEGREE);
 	double s1 = sin(a.dec * DEGREE), s2 = sin(a.ha * DEGREE);
 	Transformation tp = t;
@@ -219,7 +224,7 @@ AzimuthalCoordinates CelestialMath::alignOneStar(
 {
 	AzimuthalCoordinates pa = pa_start;
 
-	// Perform Newton iteration to obtain a better estimation for PA coordinates
+// Perform Newton iteration to obtain a better estimation for PA coordinates
 
 	int i = 0;
 	double diff = 1e10;
@@ -277,7 +282,7 @@ IndexOffset CelestialMath::alignOneStarForOffset(
 		const LocalEquatorialCoordinates& star_ref,
 		const MountCoordinates& star_meas)
 {
-	// Convert the reference star to Mount coordinates using the same pier side setting
+// Convert the reference star to Mount coordinates using the same pier side setting
 	MountCoordinates star = localEquatorialToMount(star_ref, star_meas.side);
 	return IndexOffset(star_meas.dec_delta - star.dec_delta,
 			star_meas.ra_delta - star.ra_delta);
@@ -293,7 +298,7 @@ void CelestialMath::alignTwoStars(const LocalEquatorialCoordinates star_ref[],
 	Transformation t, t1, t2;
 	bool diverge = false;
 
-	// First try to get a rough estimate for offset to avoid divergence
+// First try to get a rough estimate for offset to avoid divergence
 //	getMisalignedPolarAxisTransformation(t, pa, loc);
 //	offset = star_meas[0] - applyMisalignment(t, star_ref[0]);
 
@@ -379,7 +384,7 @@ void CelestialMath::alignTwoStars(const LocalEquatorialCoordinates star_ref[],
 		const MountCoordinates star_meas[], const LocationCoordinates& loc,
 		AzimuthalCoordinates& pa, IndexOffset& offset)
 {
-	// Initialize the PA and offset
+// Initialize the PA and offset
 	pa.alt = loc.lat;
 	pa.azi = 0;
 	offset = IndexOffset(0, 0);
@@ -589,7 +594,7 @@ void CelestialMath::alignNStars(const int N,
 		return;
 	}
 
-	// Assuming the cone error is not huge, we should be fairly close to the local minimum
+// Assuming the cone error is not huge, we should be fairly close to the local minimum
 	int i = 0;
 	double residue = 1e10;
 	LocalEquatorialCoordinates stars0[N], stars1[N];
@@ -730,7 +735,7 @@ void CelestialMath::alignNStars(const int N,
 		return;
 	}
 
-	// Assuming the cone error is not huge, we should be fairly close to the local minimum
+// Assuming the cone error is not huge, we should be fairly close to the local minimum
 	int i = 0;
 	double residue = 1e10;
 	MountCoordinates stars0[N], stars1[N];

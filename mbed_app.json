@@ -2,6 +2,9 @@
     "target_overrides":{
         "*":{
             "platform.stdio-baud-rate": 115200
+        },
+        "DISCO_F429ZI":{
+            "target.lse_available": 1
         }
     }
 }

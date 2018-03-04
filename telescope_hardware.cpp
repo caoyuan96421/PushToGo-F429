@@ -11,6 +11,7 @@
 #include "FATFileSystem.h"
 #include "TelescopeConfiguration.h"
 #include "EqMountServer.h"
+#include "MCULoadMeasurement.h"
 
 /**
  * Right-Ascenstion Axis
@@ -39,6 +40,8 @@ const char *config_file_path = "/sdcard/telescope.cfg";
 AdaptiveAxis *ra_axis = NULL;
 AdaptiveAxis *dec_axis = NULL;
 EquatorialMount *eq_mount = NULL;
+
+static void add_sys_commands();
 
 EquatorialMount &telescopeHardwareInit()
 {
@@ -93,27 +96,104 @@ EquatorialMount &telescopeHardwareInit()
 	return (*eq_mount); // Return reference to eq_mount
 }
 
-
 /* Serial connection */
 UARTSerial pc(USBTX, USBRX, 115200);
 
-EqMountServer *server_serial = NULL;
+EqMountServer server_serial(pc, true);
+
+bool serverInitialized = false;
 
 osStatus telescopeServerInit()
 {
 	if (eq_mount == NULL)
 		return osErrorResource;
-
-	if (server_serial == NULL)
+	if (!serverInitialized)
 	{
-		server_serial = new EqMountServer(pc, true);
+		// Only run once
+		serverInitialized = true;
+		add_sys_commands();
 	}
 
-	server_serial->bind(*eq_mount);
+	server_serial.bind(*eq_mount);
 
-	const char *str="Server initialized.\n";
+	const char *str = "Server initialized.\n";
 	printf(str);
-	pc.write(str, strlen(str));
+	stprintf(pc, str);
 
 	return osOK;
+}
+
+static int eqmount_sys(EqMountServer *server, int argn, char *argv[])
+{
+	const int THD_MAX = 32;
+	osThreadId thdlist[THD_MAX];
+	int nt = osThreadEnumerate(thdlist, THD_MAX);
+
+	stprintf(server->getStream(), "Thread list: \r\n");
+	for (int i = 0; i < nt; i++)
+	{
+		osThreadState_t state = osThreadGetState(thdlist[i]);
+		const char *s = "";
+		const char *n;
+
+		if (osThreadGetPriority(thdlist[i]) == osPriorityIdle)
+		{
+			n = "Idle thread";
+		}
+		else
+		{
+			n = osThreadGetName(thdlist[i]);
+			if (n == NULL)
+				n = "System thread";
+		}
+
+		switch (state)
+		{
+		case osThreadInactive:
+			s = "Inactive";
+			break;
+		case osThreadReady:
+			s = "Ready";
+			break;
+		case osThreadRunning:
+			s = "Running";
+			break;
+		case osThreadBlocked:
+			s = "Blocked";
+			break;
+		case osThreadTerminated:
+			s = "Terminated";
+			break;
+		case osThreadError:
+			s = "Error";
+			break;
+		default:
+			s = "Unknown";
+			break;
+		}
+		stprintf(server->getStream(), " - %10s 0x%08x %s \r\n", s,
+				(uint32_t) thdlist[i], n);
+	}
+
+	stprintf(server->getStream(), "\r\nRecent CPU usage: %.1f%%\r\n",
+			MCULoadMeasurement::getInstance().getCPUUsage() * 100);
+	return 0;
+}
+
+static int eqmount_systime(EqMountServer *server, int argn, char *argv[])
+{
+	char buf[32];
+	time_t t = time(NULL);
+	ctime_r(&t, buf);
+	stprintf(server->getStream(), "Current UTC time: %s\r\n", buf);
+
+	return 0;
+}
+
+static void add_sys_commands()
+{
+	EqMountServer::addCommand(
+			ServerCommand("sys", "Print system information", eqmount_sys));
+	EqMountServer::addCommand(
+			ServerCommand("systime", "Print system time", eqmount_systime));
 }

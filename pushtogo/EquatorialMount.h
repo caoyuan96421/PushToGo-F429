@@ -207,6 +207,16 @@ public:
 	}
 
 	void updatePosition();
+
+	UTCClock& getClock() const
+	{
+		return clock;
+	}
+
+	const LocationCoordinates& getLocation() const
+	{
+		return location;
+	}
 };
 
 #endif /*EQUATORIALMOUNT_H_*/

@@ -56,6 +56,13 @@ public:
 	{
 		return stream;
 	}
+
+	static void addCommand(const ServerCommand &cmd);
 };
+
+/**
+ * Print to stream
+ */
+void stprintf(FileHandle &f, const char *fmt, ...);
 
 #endif /* EQMOUNTSERVER_H_ */

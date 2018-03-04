@@ -8,7 +8,6 @@
 #include "EqMountServer.h"
 #include "mbed_events.h"
 #include <ctype.h>
-#include "MCULoadMeasurement.h"
 
 #define EMS_DEBUG 0
 #define MAX_COMMAND 128
@@ -18,7 +17,7 @@
 
 extern ServerCommand commandlist[MAX_COMMAND];
 
-static void stprintf(FileHandle &f, const char *fmt, ...)
+void stprintf(FileHandle &f, const char *fmt, ...)
 {
 	char buf[128];
 	va_list args;
@@ -324,70 +323,112 @@ static int eqmount_help(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_sys(EqMountServer *server, int argn, char *argv[])
+static int eqmount_time(EqMountServer *server, int argn, char *argv[])
 {
-	const int THD_MAX = 32;
-	osThreadId thdlist[THD_MAX];
-	int nt = osThreadEnumerate(thdlist, THD_MAX);
+	char buf[32];
+	//Get time
+	time_t t = server->getEqMount()->getClock().getTime();
 
-	stprintf(server->getStream(), "Thread list: \r\n");
-	for (int i = 0; i < nt; i++)
+	if (argn >= 2)
 	{
-		osThreadState_t state = osThreadGetState(thdlist[i]);
-		const char *s = "";
-		const char *n;
+		return 1;
+	}
+	else if (argn == 1)
+	{
+		if (strcmp(argv[0], "stamp") == 0)
+		{
+			// Print timestamp value
+			stprintf(server->getStream(), "%d\r\n", t);
+			return 0;
+		}
+		else if (strcmp(argv[0], "sidereal") == 0)
+		{
+			// Print sidereal time at current location
+			// 0.0 is sidereal midnight, 180/-180 is sidereal noon
+			double st = CelestialMath::getLocalSiderealTime(t,
+					server->getEqMount()->getLocation());
+			int hh = ((int) floor(st / 15) + 24) % 24;
+			int mm = (int) floor((st + 360.0 - hh * 15) * 4) % 60;
+			int ss = (int) floor((st + 360.0 - hh * 15 - mm * 0.25) * 240) % 60;
+			stprintf(server->getStream(), "%f\r\n", st);
+			stprintf(server->getStream(), "%d:%d:%d LST\r\n", hh, mm, ss);
+			return 0;
+		}
+		else if (strcmp(argv[0], "local") == 0)
+		{
+			t += (int) (remainder(server->getEqMount()->getLocation().lon, 360)
+					* 240);
+			ctime_r(&t, buf);
+			stprintf(server->getStream(), "%s\r\n", buf);
+			return 0;
+		}
 
-		if (osThreadGetPriority(thdlist[i]) == osPriorityIdle)
-		{
-			n = "Idle thread";
-		}
-		else
-		{
-			n = osThreadGetName(thdlist[i]);
-			if (n == NULL)
-				n = "System thread";
-		}
-
-		switch (state)
-		{
-		case osThreadInactive:
-			s = "Inactive";
-			break;
-		case osThreadReady:
-			s = "Ready";
-			break;
-		case osThreadRunning:
-			s = "Running";
-			break;
-		case osThreadBlocked:
-			s = "Blocked";
-			break;
-		case osThreadTerminated:
-			s = "Terminated";
-			break;
-		case osThreadError:
-			s = "Error";
-			break;
-		default:
-			s = "Unknown";
-			break;
-		}
-		stprintf(server->getStream(), " - %10s 0x%08x %s \r\n", s,
-				(uint32_t) thdlist[i], n);
 	}
 
-	stprintf(server->getStream(), "\r\nRecent CPU usage: %.1f%%\r\n",
-			MCULoadMeasurement::getInstance().getCPUUsage() * 100);
+	// Print of formatted string of current time
+	ctime_r(&t, buf);
+	stprintf(server->getStream(), "%s\r\n", buf);
+
 	return 0;
 }
 
-static int eqmount_time(EqMountServer *server, int argn, char *argv[])
+static int eqmount_settime(EqMountServer *server, int argn, char *argv[])
 {
-	time_t t = time(NULL);
+	if (argn == 1)
+	{
+		//Use the first argument as UTC timestamp
+		time_t t = strtol(argv[0], NULL, 10);
+		server->getEqMount()->getClock().setTime(t);
+	}
+	else if (argn == 6)
+	{
+		int year = strtol(argv[0], NULL, 10);
+		int month = strtol(argv[1], NULL, 10);
+		int day = strtol(argv[2], NULL, 10);
+		int hour = strtol(argv[3], NULL, 10);
+		int min = strtol(argv[4], NULL, 10);
+		int sec = strtol(argv[5], NULL, 10);
+		struct tm ts;
+		ts.tm_sec = sec;
+		ts.tm_min = min;
+		ts.tm_hour = hour;
+		ts.tm_mday = day;
+		ts.tm_mon = month - 1;
+		ts.tm_year = year - 1900;
+		ts.tm_isdst = 0;
 
-	stprintf(server->getStream(), "Current UTC time: %s\r\n", ctime(&t));
+		time_t t = mktime(&ts);
+		if (t == -1)
+		{
+			// Parameter out of range
+			return 2;
+		}
+
+		server->getEqMount()->getClock().setTime(t);
+	}
+	else
+	{
+		stprintf(server->getStream(),
+				"Usage: settime <timestamp>, or, settime <year> <month> <day> <hour> <minute> <second> (UTC time should be used)\r\n");
+		return 1;
+	}
 
 	return 0;
+}
+
+void EqMountServer::addCommand(const ServerCommand& cmd)
+{
+	int i = 0;
+	while (i < MAX_COMMAND && commandlist[i].fptr != NULL)
+		i++;
+	if (i >= MAX_COMMAND - 1)
+	{
+		debug("Error: max command reached.\n");
+		return;
+	}
+
+	commandlist[i] = cmd;
+	commandlist[++i] = ServerCommand("", "", NULL);
 }
 
 ServerCommand commandlist[MAX_COMMAND] =
@@ -404,6 +445,7 @@ ServerCommand commandlist[MAX_COMMAND] =
 		ServerCommand("readpos", "Read current RA/DEC position",
 				eqmount_readpos), /// Read Position
 		ServerCommand("help", "Print this help menu", eqmount_help), /// Help menu
-		ServerCommand("sys", "Print system information", eqmount_sys), /// sys
-		ServerCommand("time", "Print current time & date", eqmount_time), /// sys
-		};
+		ServerCommand("time", "Get and set system time", eqmount_time), /// System time
+		ServerCommand("settime", "Set system time", eqmount_settime), /// System time
+		ServerCommand("", "", NULL) };
+

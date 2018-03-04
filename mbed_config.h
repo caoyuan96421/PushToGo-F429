@@ -53,7 +53,7 @@
 #define MBED_LFS_LOOKAHEAD                                512                          // set by library:littlefs
 #define MBED_CONF_EVENTS_USE_LOWPOWER_TIMER_TICKER        0                            // set by library:events
 #define MBED_CONF_PLATFORM_STDIO_CONVERT_NEWLINES         0                            // set by library:platform
-#define MBED_CONF_TARGET_LSE_AVAILABLE                    0                            // set by target:DISCO_F429ZI
+#define MBED_CONF_TARGET_LSE_AVAILABLE                    1                            // set by application[DISCO_F429ZI]
 #define MBED_LFS_ENABLE_INFO                              0                            // set by library:littlefs
 #define MBED_CONF_SD_SPI_MISO                             PC_11                        // set by library:sd[DISCO_F429ZI]
 #define MBED_CONF_EVENTS_SHARED_HIGHPRIO_EVENTSIZE        256                          // set by library:events
