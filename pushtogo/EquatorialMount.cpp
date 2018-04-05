@@ -25,12 +25,7 @@ osStatus EquatorialMount::goTo(double ra_dest, double dec_dest)
 
 osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 {
-	if (status != MOUNT_STOPPED)
-	{
-		debug("EM: goTo requested while mount is not stopped.\n");
-		return osErrorParameter;
-	}
-	debug_if(EM_DEBUG, "EM: goTo\n");
+
 	debug_if(EM_DEBUG, "dest ra=%.2f, dec=%.2f\n", dest.ra, dest.dec);
 	LocalEquatorialCoordinates dest_local =
 			CelestialMath::equatorialToLocalEquatorial(dest, clock.getTime(),
@@ -42,6 +37,18 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 	// Convert to Mount coordinates. Automatically determine the pier side, then apply offset
 	MountCoordinates dest_mount = CelestialMath::localEquatorialToMount(
 			dest_local, PIER_SIDE_AUTO) + offset;
+
+	return goToMount(dest_mount);
+}
+
+osStatus EquatorialMount::goToMount(MountCoordinates dest_mount)
+{
+	if (status != MOUNT_STOPPED)
+	{
+		debug("EM: goTo requested while mount is not stopped.\n");
+		return osErrorParameter;
+	}
+	debug_if(EM_DEBUG, "EM: goTo\n");
 	debug_if(EM_DEBUG, "dstmnt ra=%.2f, dec=%.2f\n", dest_mount.ra_delta,
 			dest_mount.dec_delta);
 

@@ -46,7 +46,7 @@ static void add_sys_commands();
 EquatorialMount &telescopeHardwareInit()
 {
 	TelescopeConfiguration &telescope_config =
-			TelescopeConfiguration::getDefaultConfiguration();
+			TelescopeConfiguration::getInstance();
 	// Read configuration
 	printf("Mounting SD card...\n");
 	if (fs.mount(&sdb) != 0)
@@ -99,7 +99,10 @@ EquatorialMount &telescopeHardwareInit()
 /* Serial connection */
 UARTSerial pc(USBTX, USBRX, 115200);
 
-EqMountServer server_serial(pc, true);
+#include "USBSerial.h"
+USBSerial usb(0x10c4, 0xbbbb, 0x0001, 1);
+
+EqMountServer server_serial(usb, true);
 
 bool serverInitialized = false;
 
@@ -114,11 +117,14 @@ osStatus telescopeServerInit()
 		add_sys_commands();
 	}
 
+	while (!usb.configured())
+		Thread::wait(10);
+
 	server_serial.bind(*eq_mount);
 
 	const char *str = "Server initialized.\n";
 	printf(str);
-	stprintf(pc, str);
+//	stprintf(usb, str);
 
 	return osOK;
 }

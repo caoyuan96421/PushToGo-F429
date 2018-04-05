@@ -139,7 +139,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 					stepper->setFrequency(stepsPerDeg * endSpeed)
 							/ stepsPerDeg);
 			ramp_steps = (unsigned int) (endSpeed
-					/ (config.getAccelerationStepTimeMs() / 1000.0)
+					/ (config.getAccelerationStepTime() / 1000.0)
 					/ acceleration);
 			if (ramp_steps < 1)
 				ramp_steps = 1;
@@ -151,7 +151,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 				double speed = stepper->setFrequency(
 						stepsPerDeg * endSpeed / ramp_steps * i) / stepsPerDeg;
 				angleRotatedDuringAcceleration += speed
-						* (config.getAccelerationStepTimeMs() / 1000.0)
+						* (config.getAccelerationStepTime() / 1000.0)
 						* (i == ramp_steps ? 1 : 2); // Count both acceleration and deceleration
 			}
 
@@ -183,7 +183,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		uint32_t flags;
 		/*Acceleration*/
 		ramp_steps = (unsigned int) (endSpeed
-				/ (config.getAccelerationStepTimeMs() / 1000.0) / acceleration);
+				/ (config.getAccelerationStepTime() / 1000.0) / acceleration);
 
 		if (ramp_steps < 1)
 			ramp_steps = 1;
@@ -202,7 +202,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			/*Monitor whether there is a stop/emerge stop signal*/
 			uint32_t flags = osThreadFlagsWait(
 			AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny,
-					config.getAccelerationStepTimeMs());
+					config.getAccelerationStepTime());
 
 			if (flags == osFlagsErrorTimeout)
 			{
@@ -244,7 +244,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		/*Now deceleration*/
 		endSpeed = currentSpeed;
 		ramp_steps = (unsigned int) (currentSpeed
-				/ (config.getAccelerationStepTimeMs() / 1000.0) / acceleration);
+				/ (config.getAccelerationStepTime() / 1000.0) / acceleration);
 
 		if (ramp_steps < 1)
 			ramp_steps = 1;
@@ -258,7 +258,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 					stepsPerDeg * endSpeed / ramp_steps * i) / stepsPerDeg; // set and update accurate speed
 			// Wait. Now we only handle EMERGENCY STOP signal, since stop has been handled already
 			flags = osThreadFlagsWait(AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny,
-					config.getAccelerationStepTimeMs());
+					config.getAccelerationStepTime());
 
 			if (flags != osFlagsErrorTimeout)
 			{

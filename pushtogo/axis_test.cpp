@@ -36,7 +36,7 @@ void test_stepper()
 	SPI spi4(PE_6, PE_5, PE_2);
 	AMIS30543StepperDriver stepper_real(&spi4, PE_4, PC_8);
 	AdaptiveAxis axis(stepsPerDeg, &stepper_real,
-			TelescopeConfiguration::getDefaultConfiguration(), false,
+			TelescopeConfiguration::getInstance(), false,
 			"DEC Axis");
 	InterruptIn button(USER_BUTTON);
 

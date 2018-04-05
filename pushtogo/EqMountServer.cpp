@@ -32,7 +32,7 @@ EqMountServer::EqMountServer(FileHandle &stream, bool echo) :
 		eq_mount(NULL), stream(stream), thread(osPriorityBelowNormal,
 		OS_STACK_SIZE, NULL, "EqMountServer"), echo(echo), commandRunning(false)
 {
-	thread.start(callback(this, &EqMountServer::task_thread));
+	//thread.start(callback(this, &EqMountServer::task_thread));
 }
 
 EqMountServer::~EqMountServer()
@@ -56,6 +56,8 @@ void EqMountServer::task_thread()
 		int i = 0;
 		while (!eof && i < (int) sizeof(buffer) - 10)
 		{
+			while (!stream.readable())
+				Thread::wait(1);
 			int s = stream.read(&x, 1);
 			if (s <= 0)
 			{ // End of file
@@ -222,28 +224,38 @@ static int eqmount_estop(EqMountServer *server, int argn, char *argv[])
 
 static int eqmount_goto(EqMountServer *server, int argn, char *argv[])
 {
-	if (argn != 2)
-	{ // Must be two args
+	if (argn == 1)
+	{
+		if (strcmp(argv[0], "index") == 0)
+		{
+			return server->getEqMount()->goToIndex();
+		}
+	}
+	else if (argn == 2)
+	{
+		char *tp;
+		double ra = strtod(argv[0], &tp);
+		if (tp == argv[0])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		double dec = strtod(argv[1], &tp);
+		if (tp == argv[1])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+
+		if (!((ra <= 180.0) && (ra >= -180.0) && (dec <= 90.0) && (dec >= -90.0)))
+			return ERR_PARAM_OUT_OF_RANGE;
+
+		osStatus s;
+		if ((s = server->getEqMount()->goTo(ra, dec)) != osOK)
+			return s;
+	}
+	else
+	{
 		return ERR_WRONG_NUM_PARAM;
 	}
-	char *tp;
-	double ra = strtod(argv[0], &tp);
-	if (tp == argv[0])
-	{
-		return ERR_PARAM_OUT_OF_RANGE;
-	}
-	double dec = strtod(argv[1], &tp);
-	if (tp == argv[1])
-	{
-		return ERR_PARAM_OUT_OF_RANGE;
-	}
-
-	if (!((ra <= 180.0) && (ra >= -180.0) && (dec <= 90.0) && (dec >= -90.0)))
-		return ERR_PARAM_OUT_OF_RANGE;
-
-	osStatus s;
-	if ((s = server->getEqMount()->goTo(ra, dec)) != osOK)
-		return s;
 
 	return 0;
 }

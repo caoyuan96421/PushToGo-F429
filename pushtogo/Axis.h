@@ -55,10 +55,14 @@ public:
 			const char *name = "Axis") :
 			stepsPerDeg(stepsPerDeg), stepper(stepper), invert(invert), axisName(
 					name), config(config), currentSpeed(0), currentDirection(
-					AXIS_ROTATE_POSITIVE), slewSpeed(2), trackSpeed(
-					sidereal_speed), correctionSpeed(32.0f * sidereal_speed), guideSpeed(
-					0.5f * sidereal_speed), acceleration(1), status(
-					AXIS_STOPPED), slew_finish_sem(0, 1)
+					AXIS_ROTATE_POSITIVE), slewSpeed(
+					config.getDefaultSlewSpeed()), trackSpeed(
+					config.getDefaultTrackSpeedSidereal() * sidereal_speed), correctionSpeed(
+					config.getDefaultCorrectionSpeedSidereal()
+							* sidereal_speed), guideSpeed(
+					config.getDefaultGuideSpeedSidereal() * sidereal_speed), acceleration(
+					config.getDefaultAcceleration()), status(AXIS_STOPPED), slew_finish_sem(
+					0, 1)
 	{
 		if (stepsPerDeg <= 0)
 			error("Axis: steps per degree must be > 0");

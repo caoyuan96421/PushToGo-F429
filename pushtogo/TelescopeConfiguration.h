@@ -14,21 +14,26 @@
 class TelescopeConfiguration
 {
 private:
+
+	static TelescopeConfiguration instance;
+
 	// Basic parameters
-	double motor_steps; /// Steps per rotation of the stepper motor
+	int motor_steps; /// Steps per rotation of the stepper motor
 	double gear_reduction; /// Gear reduction ratio from motor to worm
-	double worm_teeth; /// Number of worm teeth
+	int worm_teeth; /// Number of worm teeth
 	bool ra_invert; /// Reverse RA axis?
 	bool dec_invert; /// Reverse DEC axis?
 	LocationCoordinates location;
+	int timezone;
 
 	// Axis behavior, for goto fine tuning
 	double default_slew_speed;
 	double default_track_speed_sidereal;
 	double default_correction_speed_sidereal;
+	double default_guide_speed_sidereal;
 	double default_acceleration;
 	double max_speed;
-	int acceleration_step_time_ms;
+	int acceleration_step_time;
 	double min_slew_angle;
 	double correction_tolerance;
 	int min_correction_time;
@@ -54,14 +59,16 @@ public:
 		ra_invert = false;
 		dec_invert = false;
 		location = LocationCoordinates(42, -73);
+		timezone = -4;
 
-		default_slew_speed = 2;
+		default_slew_speed = 4;
 		default_track_speed_sidereal = 1;
 		default_correction_speed_sidereal = 32;
+		default_guide_speed_sidereal = 0.5;
 		default_acceleration = 2;
 
 		max_speed = 4;
-		acceleration_step_time_ms = 5;
+		acceleration_step_time = 5;
 		min_slew_angle = 0.3;
 		correction_tolerance = 0.03;
 		min_correction_time = 5;
@@ -84,10 +91,9 @@ public:
 	/**
 	 * Get default telescope configuration
 	 */
-	static TelescopeConfiguration &getDefaultConfiguration()
+	static TelescopeConfiguration &getInstance()
 	{
-		static TelescopeConfiguration default_config = TelescopeConfiguration();
-		return default_config;
+		return instance;
 	}
 
 	static TelescopeConfiguration &readFromFile(FILE *fp);
@@ -112,12 +118,12 @@ public:
 		gear_reduction = gearReduction;
 	}
 
-	double getMotorSteps() const
+	int getMotorSteps() const
 	{
 		return motor_steps;
 	}
 
-	void setMotorSteps(double motorSteps)
+	void setMotorSteps(int motorSteps)
 	{
 		motor_steps = motorSteps;
 	}
@@ -132,12 +138,12 @@ public:
 		ra_invert = raInvert;
 	}
 
-	double getWormTeeth() const
+	int getWormTeeth() const
 	{
 		return worm_teeth;
 	}
 
-	void setWormTeeth(double wormTeeth)
+	void setWormTeeth(int wormTeeth)
 	{
 		worm_teeth = wormTeeth;
 	}
@@ -157,14 +163,14 @@ public:
 		this->location = location;
 	}
 
-	int getAccelerationStepTimeMs() const
+	int getAccelerationStepTime() const
 	{
-		return acceleration_step_time_ms;
+		return acceleration_step_time;
 	}
 
-	void setAccelerationStepTimeMs(int accelerationStepTimeMs)
+	void setAccelerationStepTime(int accelerationStepTime)
 	{
-		acceleration_step_time_ms = accelerationStepTimeMs;
+		acceleration_step_time = accelerationStepTime;
 	}
 
 	double getCorrectionTolerance() const
@@ -336,6 +342,26 @@ public:
 	void setMicrostepTrack(int microstepTrack)
 	{
 		microstep_track = microstepTrack;
+	}
+
+	int getTimezone() const
+	{
+		return timezone;
+	}
+
+	void setTimezone(int timezone)
+	{
+		this->timezone = timezone;
+	}
+
+	double getDefaultGuideSpeedSidereal() const
+	{
+		return default_guide_speed_sidereal;
+	}
+
+	void setDefaultGuideSpeedSidereal(double defaultGuideSpeedSidereal)
+	{
+		default_guide_speed_sidereal = defaultGuideSpeedSidereal;
 	}
 };
 

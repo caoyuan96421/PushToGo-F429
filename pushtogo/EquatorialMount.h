@@ -108,6 +108,11 @@ public:
 	 */
 	osStatus goTo(double ra_dest, double dec_dest);
 	osStatus goTo(EquatorialCoordinates dest);
+	osStatus goToMount(MountCoordinates mc);
+	osStatus goToIndex()
+	{
+		return goToMount(MountCoordinates(0, 0));
+	}
 
 	osStatus startNudge(nudgedir_t);
 	osStatus stopNudge();
