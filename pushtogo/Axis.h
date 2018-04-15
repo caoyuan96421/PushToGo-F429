@@ -51,9 +51,9 @@ public:
 	 * @param invert Whether the stepper direction should be inverted
 	 */
 	Axis(double stepsPerDeg, StepperMotor *stepper,
-			TelescopeConfiguration &config, bool invert = false,
+			TelescopeConfiguration &config,
 			const char *name = "Axis") :
-			stepsPerDeg(stepsPerDeg), stepper(stepper), invert(invert), axisName(
+			stepsPerDeg(stepsPerDeg), stepper(stepper), axisName(
 					name), config(config), currentSpeed(0), currentDirection(
 					AXIS_ROTATE_POSITIVE), slewSpeed(
 					config.getDefaultSlewSpeed()), trackSpeed(
@@ -340,7 +340,6 @@ protected:
 	/*Configurations*/
 	double stepsPerDeg; ///steps per degree
 	StepperMotor *stepper; ///Pointer to stepper motor
-	bool invert;
 	const char *axisName;
 	char *taskName;
 	TelescopeConfiguration &config;

@@ -19,6 +19,7 @@
 #define USBHAL_IP_OTGFSHS_H
 
 #include "USBHAL.h"
+#include "core_cm4.h"
 
 #if defined(TARGET_DISCO_F746NG)
 #if (MBED_CONF_TARGET_USB_SPEED == 1) // Defined in json configuration file
@@ -116,6 +117,7 @@ USBHAL::USBHAL(void) {
 #endif
     hpcd.Init.dev_endpoints = NB_ENDPOINT;
     hpcd.Init.ep0_mps = MAX_PACKET_SIZE_EP0;
+    hpcd.Init.vbus_sensing_enable = 1;
 
     // Pass instance for usage inside call back
     HALPriv->inst = this;
@@ -164,7 +166,7 @@ USBHAL::USBHAL(void) {
     __HAL_RCC_GPIOB_CLK_ENABLE();
     pin_function(PB_14, STM_PIN_DATA(STM_MODE_AF_PP, GPIO_NOPULL, GPIO_AF12_OTG_HS_FS)); // DM
     pin_function(PB_15, STM_PIN_DATA(STM_MODE_AF_PP, GPIO_NOPULL, GPIO_AF12_OTG_HS_FS)); // DP
-    pin_function(PB_13, STM_PIN_DATA(STM_MODE_INPUT, GPIO_NOPULL, 0)); // VBUS
+    pin_function(PB_13, STM_PIN_DATA(STM_MODE_INPUT, GPIO_NOPULL, GPIO_AF12_OTG_HS_FS)); // VBUS
     __HAL_RCC_USB_OTG_HS_CLK_ENABLE();
 
 #elif defined(TARGET_DISCO_L475VG_IOT01A) || \

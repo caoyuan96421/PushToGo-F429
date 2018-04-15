@@ -18,6 +18,7 @@
 */
 
 #include "stdint.h"
+#include "USBMSD.h"
 
 #define DISK_OK         0x00
 #define NO_INIT         0x01

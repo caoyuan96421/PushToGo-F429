@@ -7,9 +7,7 @@
 #include "LocationProvider.h"
 #include "CelestialMath.h"
 
-/**
- * EquatorialMount status
- */
+#define MAX_AS_N 10 // Max number of alignment stars
 
 /**
  * Direction of nudge
@@ -27,34 +25,6 @@ typedef enum
 	NUDGE_NORTHEAST = NUDGE_NORTH | NUDGE_EAST,
 	NUDGE_SOUTHEAST = NUDGE_SOUTH | NUDGE_EAST,
 } nudgedir_t;
-
-/**
- * Alignment star object
- */
-struct AlignmentStar
-{
-	EquatorialCoordinates star_ref; /// Reference position of the star in the sky (in current epoch)
-	MountCoordinates star_meas;	/// Measured position of the star in mount coordinates
-	time_t timestamp;				/// UTC timestamp of the measurement
-	AlignmentStar(const EquatorialCoordinates & ref, MountCoordinates meas,
-			time_t t) :
-			star_ref(ref), star_meas(meas), timestamp(t)
-	{
-	}
-};
-
-struct EqCalibration
-{
-	LocationCoordinates location;
-	IndexOffset offset;
-	AzimuthalCoordinates pa;
-	double cone;
-	EqCalibration(const LocationCoordinates &loc, const IndexOffset &off,
-			const AzimuthalCoordinates p, double c) :
-			location(loc), offset(off), pa(p), cone(c)
-	{
-	}
-};
 
 /**
  * Object that represents an equatorial mount with two perpendicular axis called RA and Dec.
@@ -79,10 +49,13 @@ protected:
 	double nudgeSpeed;
 
 	pierside_t pier_side;      /// Side of pier. 1: East
-	IndexOffset offset; /// Offset in DEC and RA(HA) axis index position
-	AzimuthalCoordinates pa;    /// Alt-azi coordinate of the actual polar axis
+	//IndexOffset offset; /// Offset in DEC and RA(HA) axis index position
+	//AzimuthalCoordinates pa;    /// Alt-azi coordinate of the actual polar axis
 	Transformation pa_trans;
-	double cone_value; /// Non-orthogonality between the two axis, or cone value.
+	//double cone_value; /// Non-orthogonality between the two axis, or cone value.
+	EqCalibration calibration;
+	AlignmentStar alignment_stars[MAX_AS_N];
+	int num_alignment_stars;
 
 public:
 
@@ -119,6 +92,73 @@ public:
 
 	osStatus startTracking();
 
+	/*Calibration related functions*/
+	/**
+	 * Clear calibration, use current latitude for the polar axis
+	 */
+	void clearCalibration()
+	{
+		num_alignment_stars = 0;
+		calibration = EqCalibration();
+		calibration.pa.alt = location.lat;
+	}
+
+	const EqCalibration &getCalibration() const
+	{
+		return calibration;
+	}
+
+	int getNumAlignmentStar()
+	{
+		return num_alignment_stars;
+	}
+
+	osStatus addAlignmentStar(AlignmentStar as)
+	{
+		if (num_alignment_stars < MAX_AS_N)
+		{
+			alignment_stars[num_alignment_stars++] = as;
+			return recalibrate();
+		}
+		else
+			return osErrorResource;
+	}
+
+	osStatus removeAlignmentStar(int index)
+	{
+		if (index < 0 || index >= num_alignment_stars)
+		{
+			return osErrorParameter;
+		}
+		for (; index < num_alignment_stars - 1; index++)
+		{
+			alignment_stars[index] = alignment_stars[index + 1];
+		}
+		num_alignment_stars--;
+		return recalibrate();
+	}
+
+	AlignmentStar *getAlignmentStar(int index)
+	{
+		if (index < 0 || index >= num_alignment_stars)
+		{
+			return NULL;
+		}
+		return &alignment_stars[index];
+	}
+
+	osStatus replaceAlignmentStar(int index, AlignmentStar as)
+	{
+		if (index < 0 || index >= num_alignment_stars)
+		{
+			return osErrorParameter;
+		}
+		alignment_stars[index] = as;
+		return recalibrate();
+	}
+
+	osStatus recalibrate();
+
 	/**
 	 * Call emergency stop of the Axis objects
 	 * @note This function can be called from any context (including ISR) to perform a hard stop of the mount
@@ -141,7 +181,7 @@ public:
 	 * Get current equatorial coordinates
 	 * @return current equatorial coordinates
 	 */
-	EquatorialCoordinates getEquatorialCoordinates()
+	const EquatorialCoordinates &getEquatorialCoordinates()
 	{
 		updatePosition();
 		return curr_pos_eq;
@@ -151,7 +191,7 @@ public:
 	 * Get current mount coordinates
 	 * @return current mount coordinates
 	 */
-	MountCoordinates getMountCoordinates()
+	const MountCoordinates &getMountCoordinates()
 	{
 		updatePosition();
 		return curr_pos;
@@ -190,6 +230,15 @@ public:
 	}
 
 	/**
+	 * Set tracking speed of RA axis
+	 * @param rate new speed in sidereal rate
+	 */
+	void setTrackSpeedSidereal(double rate)
+	{
+		ra.setTrackSpeedSidereal(rate);
+	}
+
+	/**
 	 * Set slew rate of both axis
 	 * @param rate new speed
 	 */
@@ -222,6 +271,7 @@ public:
 	{
 		return location;
 	}
+
 };
 
 #endif /*EQUATORIALMOUNT_H_*/

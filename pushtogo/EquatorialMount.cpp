@@ -6,12 +6,14 @@
 EquatorialMount::EquatorialMount(Axis& ra, Axis& dec, UTCClock& clk,
 		LocationCoordinates loc) :
 		ra(ra), dec(dec), clock(clk), location(loc), curr_pos(0, 0), curr_nudge_dir(
-				NUDGE_NONE), nudgeSpeed(0), pier_side(PIER_SIDE_EAST), offset(0,
-				0), pa(loc.lat, 0), cone_value(0)
+				NUDGE_NONE), nudgeSpeed(0), pier_side(PIER_SIDE_EAST), num_alignment_stars(
+				0)
 {
 	south = loc.lat < 0.0;
 	// Get initial transformation
-	CelestialMath::getMisalignedPolarAxisTransformation(pa_trans, pa, location);
+	calibration.pa = AzimuthalCoordinates(loc.lat, 0);
+	CelestialMath::getMisalignedPolarAxisTransformation(pa_trans,
+			calibration.pa, location);
 	// Set RA and DEC positions to zero
 	ra.setAngleDeg(0);
 	dec.setAngleDeg(0);
@@ -33,10 +35,10 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 	// Apply PA misalignment
 	dest_local = CelestialMath::applyMisalignment(pa_trans, dest_local);
 	// Apply Cone error
-	dest_local = CelestialMath::applyConeError(dest_local, cone_value);
+	dest_local = CelestialMath::applyConeError(dest_local, calibration.cone);
 	// Convert to Mount coordinates. Automatically determine the pier side, then apply offset
 	MountCoordinates dest_mount = CelestialMath::localEquatorialToMount(
-			dest_local, PIER_SIDE_AUTO) + offset;
+			dest_local, PIER_SIDE_AUTO) + calibration.offset;
 
 	return goToMount(dest_mount);
 }
@@ -271,7 +273,7 @@ void EquatorialMount::updatePosition()
 	curr_pos = MountCoordinates(dec.getAngleDeg(), ra.getAngleDeg());
 
 	// Determine the side of pier based on (offset) DEC axis pointing direction
-	MountCoordinates curr_pos_off = curr_pos - offset; // mount position with index offset corrected (in principle)
+	MountCoordinates curr_pos_off = curr_pos - calibration.offset; // mount position with index offset corrected (in principle)
 	if (curr_pos_off.dec_delta > 0)
 	{
 		curr_pos.side = PIER_SIDE_WEST;
@@ -286,7 +288,7 @@ void EquatorialMount::updatePosition()
 	// Convert back from MountCoordinates to equatorial coordinates
 	LocalEquatorialCoordinates pos_local =
 			CelestialMath::mountToLocalEquatorial(curr_pos_off);
-	pos_local = CelestialMath::deapplyConeError(pos_local, cone_value);
+	pos_local = CelestialMath::deapplyConeError(pos_local, calibration.cone);
 	pos_local = CelestialMath::deapplyMisalignment(pa_trans, pos_local);
 	curr_pos_eq = CelestialMath::localEquatorialToEquatorial(pos_local,
 			clock.getTime(), location);
@@ -324,8 +326,22 @@ void EquatorialMount::stopWait()
 	status = MOUNT_STOPPED;
 }
 
-osStatus EquatorialMount::align(int n, const AlignmentStar as[])
+osStatus EquatorialMount::recalibrate()
 {
-	// TODO
+	bool diverge = false;
+
+	if (num_alignment_stars == 0)
+	{
+		return osOK;
+	}
+	EqCalibration newcalib = CelestialMath::align(num_alignment_stars,
+			alignment_stars, location, diverge);
+	if (diverge)
+	{
+		return osErrorParameter;
+	}
+
+	calibration = newcalib;
+
 	return osOK;
 }

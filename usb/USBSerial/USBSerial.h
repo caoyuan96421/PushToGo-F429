@@ -22,8 +22,9 @@
 
 #include "USBCDC.h"
 #include "Stream.h"
-#include "CircBuffer.h"
+//#include "CircBuffer.h"
 #include "Callback.h"
+#include "mbed.h"
 
 /**
  * USBSerial example
@@ -84,9 +85,9 @@ public:
 	/**
 	 * Check the number of bytes available.
 	 *
-	 * @returns the number of bytes available
+	 * @returns whether there is anything available to read
 	 */
-	uint8_t available();
+	bool available();
 
 	/**
 	 * Check if the terminal is connected.
@@ -203,7 +204,7 @@ protected:
 
 private:
 	Callback<void()> rx;
-	CircBuffer<uint8_t, 128> buf;
+	Queue<void, 128> buf;
 	void (*settingsChangedCallback)(int baud, int bits, int parity, int stop);
 };
 

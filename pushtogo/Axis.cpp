@@ -106,7 +106,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 	status = AXIS_SLEWING;
 	currentDirection = dir;
 	stepdir_t sd =
-			((dir == AXIS_ROTATE_POSITIVE) ^ invert) ?
+			(dir == AXIS_ROTATE_POSITIVE) ?
 					STEP_FORWARD : STEP_BACKWARD;
 
 	/* Calculate the angle to rotate*/
@@ -298,7 +298,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		while (--nTry && fabsf(diff) > config.getCorrectionTolerance())
 		{
 			/*Determine correction direction and time*/
-			sd = ((diff > 0.0) ^ invert) ? STEP_BACKWARD : STEP_FORWARD;
+			sd = (diff > 0.0) ? STEP_BACKWARD : STEP_FORWARD;
 
 			/*Perform correction*/
 			currentSpeed = stepper->setFrequency(stepsPerDeg * correctionSpeed)
@@ -349,7 +349,7 @@ void Axis::track(axisrotdir_t dir)
 {
 	track_mode();
 	stepdir_t sd =
-			((dir == AXIS_ROTATE_POSITIVE) ^ invert) ?
+			(dir == AXIS_ROTATE_POSITIVE) ?
 					STEP_FORWARD : STEP_BACKWARD;
 	currentSpeed = stepper->setFrequency(trackSpeed * stepsPerDeg)
 			/ stepsPerDeg;

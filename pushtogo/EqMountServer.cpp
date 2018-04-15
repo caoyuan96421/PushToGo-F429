@@ -32,7 +32,7 @@ EqMountServer::EqMountServer(FileHandle &stream, bool echo) :
 		eq_mount(NULL), stream(stream), thread(osPriorityBelowNormal,
 		OS_STACK_SIZE, NULL, "EqMountServer"), echo(echo), commandRunning(false)
 {
-	//thread.start(callback(this, &EqMountServer::task_thread));
+	thread.start(callback(this, &EqMountServer::task_thread));
 }
 
 EqMountServer::~EqMountServer()
@@ -56,8 +56,6 @@ void EqMountServer::task_thread()
 		int i = 0;
 		while (!eof && i < (int) sizeof(buffer) - 10)
 		{
-			while (!stream.readable())
-				Thread::wait(1);
 			int s = stream.read(&x, 1);
 			if (s <= 0)
 			{ // End of file
@@ -260,6 +258,153 @@ static int eqmount_goto(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
+static int eqmount_speed(EqMountServer *server, int argn, char *argv[])
+{
+	char *tp;
+	if (argn == 1)
+	{
+		double speed = strtod(argv[0], &tp);
+		if (tp == argv[0])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		if (speed <= 0
+				|| speed > TelescopeConfiguration::getInstance().getMaxSpeed())
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		server->getEqMount()->setSlewSpeed(speed);
+	}
+	else if (argn == 2)
+	{
+		char *tp;
+		double speed = strtod(argv[1], &tp);
+		if (tp == argv[1])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		if (strcmp(argv[0], "slew") == 0)
+		{
+			if (speed <= 0
+					|| speed
+							> TelescopeConfiguration::getInstance().getMaxSpeed())
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+			server->getEqMount()->setSlewSpeed(speed);
+		}
+		else if (strcmp(argv[0], "track") == 0)
+		{
+			if (speed <= 0 || speed > 64)
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+			server->getEqMount()->setTrackSpeedSidereal(speed);
+		}
+	}
+	else
+	{
+		return ERR_WRONG_NUM_PARAM;
+	}
+
+	return 0;
+}
+
+static int eqmount_align(EqMountServer *server, int argn, char *argv[])
+{
+	if (argn == 0)
+	{
+		stprintf(server->getStream(),
+				"Usage: align add [star]\nalign del [n]\nalign show\nalign show [n]\nalign replace [n] [star]\nalign clear\n");
+		return ERR_WRONG_NUM_PARAM;
+	}
+	if (strcmp(argv[0], "add") == 0)
+	{
+		if (argn != 3)
+		{
+			stprintf(server->getStream(),
+					"Usage: align add {ref_ra} {ref_dec}\n");
+			return ERR_WRONG_NUM_PARAM;
+		}
+		char *tp;
+		double ref_ra = strtod(argv[1], &tp);
+		if (tp == argv[1])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		double ref_dec = strtod(argv[2], &tp);
+		if (tp == argv[2])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		AlignmentStar as;
+		as.star_ref = EquatorialCoordinates(ref_dec, ref_ra);
+		as.star_meas = server->getEqMount()->getMountCoordinates();
+		as.timestamp = server->getEqMount()->getClock().getTime();
+		server->getEqMount()->addAlignmentStar(as);
+	}
+	else if (strcmp(argv[0], "show") == 0)
+	{
+		if (argn == 1)
+		{
+			// Show all alignment stars
+			int N = server->getEqMount()->getNumAlignmentStar();
+			if (N == 0)
+			{
+				stprintf(server->getStream(), "No alignment star\n");
+			}
+			else
+			{
+				for (int i = 0; i < N; i++)
+				{
+					AlignmentStar *as = server->getEqMount()->getAlignmentStar(
+							i);
+					stprintf(server->getStream(),
+							"Star %d\n  REF: RA=%7.2f, DEC=%7.2f\n MEAS: RA=%7.2f, DEC=%7.2f %c\n",
+							i + 1, as->star_ref.ra, as->star_ref.dec,
+							as->star_meas.ra_delta, as->star_meas.dec_delta,
+							(as->star_meas.side == PIER_SIDE_WEST) ? 'W' : 'E');
+				}
+				stprintf(server->getStream(), "Offset: RA=%7.2f, DEC=%7.2f\n",
+						server->getEqMount()->getCalibration().offset.ra_off,
+						server->getEqMount()->getCalibration().offset.dec_off);
+				stprintf(server->getStream(), "Polar: ALT=%7.2f, AZ=%7.2f\n",
+						server->getEqMount()->getCalibration().pa.alt,
+						server->getEqMount()->getCalibration().pa.azi);
+				stprintf(server->getStream(), "Polar: cone=%6.3f\n",
+						server->getEqMount()->getCalibration().cone);
+			}
+		}
+		else if (argn == 2)
+		{
+			int index = strtol(argv[1], NULL, 0);
+			AlignmentStar *as = server->getEqMount()->getAlignmentStar(index);
+			if (!as)
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+			stprintf(server->getStream(),
+					"REF: RA=%7.2f, DEC=%7.2f\n MEAS: RA=%7.2f, DEC=%7.2f %c\n",
+					as->star_ref.ra, as->star_ref.dec, as->star_meas.ra_delta,
+					as->star_meas.dec_delta,
+					(as->star_meas.side == PIER_SIDE_WEST) ? 'W' : 'E');
+		}
+		else
+		{
+			return ERR_WRONG_NUM_PARAM;
+		}
+	}
+	else if (strcmp(argv[0], "clear") == 0)
+	{
+		if (argn != 1)
+		{
+			return ERR_WRONG_NUM_PARAM;
+		}
+		server->getEqMount()->clearCalibration();
+	}
+	return 0;
+}
+
 static int eqmount_nudge(EqMountServer *server, int argn, char *argv[])
 {
 	if (argn != 1 && argn != 2)
@@ -310,13 +455,36 @@ static int eqmount_track(EqMountServer *server, int argn, char *argv[])
 
 static int eqmount_readpos(EqMountServer *server, int argn, char *argv[])
 {
-	if (argn != 0)
+
+	if (argn == 0)
+	{
+		EquatorialCoordinates eq =
+				server->getEqMount()->getEquatorialCoordinates();
+		stprintf(server->getStream(), "%8.3f %8.3f\r\n", eq.ra, eq.dec);
+	}
+	else if (argn == 1)
+	{
+		if (strcmp(argv[0], "eq") == 0)
+		{
+			EquatorialCoordinates eq =
+					server->getEqMount()->getEquatorialCoordinates();
+			stprintf(server->getStream(), "%8.3f %8.3f\r\n", eq.ra, eq.dec);
+		}
+		else if (strcmp(argv[0], "mount") == 0)
+		{
+			MountCoordinates mc = server->getEqMount()->getMountCoordinates();
+			stprintf(server->getStream(), "%8.3f %8.3f %c\r\n", mc.ra_delta,
+					mc.dec_delta, (mc.side == PIER_SIDE_WEST) ? 'W' : 'E');
+		}
+		else
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+	}
+	else
 	{
 		return ERR_WRONG_NUM_PARAM;
 	}
-
-	EquatorialCoordinates eq = server->getEqMount()->getEquatorialCoordinates();
-	stprintf(server->getStream(), "%.6f %.6f\r\n", eq.ra, eq.dec);
 
 	return 0;
 }
@@ -456,6 +624,8 @@ ServerCommand commandlist[MAX_COMMAND] =
 				eqmount_track), 		/// Track
 		ServerCommand("readpos", "Read current RA/DEC position",
 				eqmount_readpos), /// Read Position
+		ServerCommand("speed", "Set slew and tracking speed", eqmount_speed), /// Set speed
+		ServerCommand("align", "Star alignment", eqmount_align), /// Alignment
 		ServerCommand("help", "Print this help menu", eqmount_help), /// Help menu
 		ServerCommand("time", "Get and set system time", eqmount_time), /// System time
 		ServerCommand("settime", "Set system time", eqmount_settime), /// System time

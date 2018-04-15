@@ -9,9 +9,9 @@
 #include "mbed.h"
 #include "pinmap.h"
 AMIS30543StepperDriver::AMIS30543StepperDriver(SPI *spi, PinName cs,
-		PinName step, PinName dir, PinName err) :
-		spi(spi), cs(cs, 1), step(step), dir(dir), err(err), status(IDLE), inc(
-				1), stepCount(0)
+		PinName step, PinName dir, PinName err, bool invert) :
+		StepperMotor(invert), spi(spi), cs(cs, 1), step(step), dir(dir), err(
+				err), status(IDLE), inc(1), stepCount(0)
 {
 	if (dir != NC)
 	{
@@ -83,7 +83,7 @@ void AMIS30543StepperDriver::start(stepdir_t dir)
 		if (useDIR)
 		{
 			/*Hard switch*/
-			if (dir == STEP_FORWARD)
+			if ((dir == STEP_FORWARD) ^ invert)
 				this->dir = 0;
 			else
 				this->dir = 1;
@@ -92,7 +92,7 @@ void AMIS30543StepperDriver::start(stepdir_t dir)
 		{
 			/*Soft switch*/
 			uint8_t cr1 = readReg(CR1) & 0x7F;
-			if (dir == STEP_FORWARD)
+			if ((dir == STEP_FORWARD) ^ invert)
 				cr1 |= 0x00;
 			else
 				cr1 |= 0x80;

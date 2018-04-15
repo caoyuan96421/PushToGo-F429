@@ -20,8 +20,11 @@ typedef enum
  */
 class StepperMotor
 {
+protected:
+	bool invert;
 public:
-	StepperMotor()
+	StepperMotor(bool invert = false) :
+			invert(invert)
 	{
 	}
 	virtual ~StepperMotor()

@@ -9,6 +9,9 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "mbed.h"
+
+#define CM_DEBUG 0
 
 static inline double clamp(double x)
 {
@@ -72,6 +75,12 @@ LocalEquatorialCoordinates CelestialMath::azimuthalToLocalEquatorial(
 
 	return LocalEquatorialCoordinates(asin(clamp(s4)) * RADIAN,
 			atan2(y1, x1) * RADIAN);
+}
+
+LocalEquatorialCoordinates AlignmentStar::star_ref_local(
+		const LocationCoordinates &loc) const
+{
+	return CelestialMath::equatorialToLocalEquatorial(star_ref, timestamp, loc);
 }
 
 double CelestialMath::getGreenwichMeanSiderealTime(time_t timestamp)
@@ -266,15 +275,15 @@ AzimuthalCoordinates CelestialMath::alignOneStar(
 		pa.azi += dp2 * delta;
 
 		diff = sqrt(dp1 * dp1 + dp2 * dp2) * delta; // calculate the difference
-		printf("Iteration %i, %f\t%f\tdiff=%f\t %e, %e, %e, %e\n", i, pa.alt,
-				pa.azi, diff, j11, j12, j21, j22);
+		debug_if(CM_DEBUG, "Iteration %i, %f\t%f\tdiff=%f\t %e, %e, %e, %e\n",
+				i, pa.alt, pa.azi, diff, j11, j12, j21, j22);
 	}
 	if (diverge)
 	{
 		/// Do something
-		printf("Diverge\n");
+		debug_if(CM_DEBUG, "Diverge\n");
 	}
-	printf("Final delta: %.2e\n", diff);
+	debug_if(CM_DEBUG, "Final delta: %.2e\n", diff);
 	return pa;
 }
 
@@ -368,21 +377,21 @@ void CelestialMath::alignTwoStars(const LocalEquatorialCoordinates star_ref[],
 		offset.ha += -dp4;
 
 		diff = sqrt(f1 * f1 + f2 * f2 + f3 * f3 + f4 * f4); // calculate the difference
-		printf("Iteration %i, %f\t%f\t%f\t%f\tdiff=%f\t %e %e\n", i, pa.alt,
-				pa.azi, offset.dec, offset.ha, diff, det,
+		debug_if(CM_DEBUG, "Iteration %i, %f\t%f\t%f\t%f\tdiff=%f\t %e %e\n", i,
+				pa.alt, pa.azi, offset.dec, offset.ha, diff, det,
 				det * (i11 * i22 - i12 * i21));
 	}
 	if (diverge)
 	{
 		/// Do something
-		printf("Diverge\n");
+		debug_if(CM_DEBUG, "Diverge\n");
 	}
-	printf("Final delta: %.2e\n", diff);
+	debug_if(CM_DEBUG, "Final delta: %.2e\n", diff);
 }
 
 void CelestialMath::alignTwoStars(const LocalEquatorialCoordinates star_ref[],
 		const MountCoordinates star_meas[], const LocationCoordinates& loc,
-		AzimuthalCoordinates& pa, IndexOffset& offset)
+		AzimuthalCoordinates& pa, IndexOffset& offset, bool &diverge)
 {
 // Initialize the PA and offset
 	pa.alt = loc.lat;
@@ -392,7 +401,7 @@ void CelestialMath::alignTwoStars(const LocalEquatorialCoordinates star_ref[],
 	int i = 0;
 	double residue = 1e10;
 	Transformation t, t1, t2;
-	bool diverge = false;
+	diverge = false;
 
 	while (i++ <= MAX_ITERATION && residue > tol)
 	{
@@ -467,16 +476,16 @@ void CelestialMath::alignTwoStars(const LocalEquatorialCoordinates star_ref[],
 		offset.ra_off += -dp4;
 
 		residue = sqrt(f1 * f1 + f2 * f2 + f3 * f3 + f4 * f4); // calculate the difference
-		printf("Iteration %i, %f\t%f\t%f\t%f\tdiff=%f\t %e %e\n", i, pa.alt,
-				pa.azi, offset.dec_off, offset.ra_off, residue, det,
+		debug_if(CM_DEBUG, "Iteration %i, %f\t%f\t%f\t%f\tdiff=%f\t %e %e\n", i,
+				pa.alt, pa.azi, offset.dec_off, offset.ra_off, residue, det,
 				det * (i11 * i22 - i12 * i21));
 	}
 	if (diverge)
 	{
 		/// Do something
-		printf("Diverge\n");
+		debug_if(CM_DEBUG, "Diverge\n");
 	}
-	printf("Final delta: %.2e\n", residue);
+	debug_if(CM_DEBUG, "Final delta: %.2e\n", residue);
 }
 
 static double jac[20][5]; // can maximally hold 10 stars
@@ -677,19 +686,19 @@ void CelestialMath::alignNStars(const int N,
 
 		if (newresidue >= residue - tol)
 		{
-			printf("Converged.\n");
+			debug_if(CM_DEBUG, "Converged.\n");
 			break;
 		}
 		else
 		{
 			residue = newresidue;
 		}
-		printf("Iteration %i, %f\t%f\t%f\t%f\t%f\tr=%f\n", i, pa.alt, pa.azi,
-				offset.dec, offset.ha, cone, residue);
+		debug_if(CM_DEBUG, "Iteration %i, %f\t%f\t%f\t%f\t%f\tr=%f\n", i,
+				pa.alt, pa.azi, offset.dec, offset.ha, cone, residue);
 	}
 
-	printf("Final result: %f\t%f\t%f\t%f\t%f\tr=%f\n", pa.alt, pa.azi,
-			offset.dec, offset.ha, cone, residue);
+	debug_if(CM_DEBUG, "Final result: %f\t%f\t%f\t%f\t%f\tr=%f\n", pa.alt,
+			pa.azi, offset.dec, offset.ha, cone, residue);
 }
 
 static void get_corrected_stars(const int N, MountCoordinates stars[],
@@ -722,11 +731,12 @@ static void fill_jacobian(const int N, const int j, MountCoordinates stars0[],
 void CelestialMath::alignNStars(const int N,
 		const LocalEquatorialCoordinates star_ref[],
 		const MountCoordinates star_meas[], const LocationCoordinates& loc,
-		AzimuthalCoordinates& pa, IndexOffset& offset, double& cone)
+		AzimuthalCoordinates& pa, IndexOffset& offset, double& cone,
+		bool &diverge)
 {
 	if (N == 2)
 	{
-		alignTwoStars(star_ref, star_meas, loc, pa, offset);
+		alignTwoStars(star_ref, star_meas, loc, pa, offset, diverge);
 		cone = 0;
 		return;
 	}
@@ -741,6 +751,8 @@ void CelestialMath::alignNStars(const int N,
 	MountCoordinates stars0[N], stars1[N];
 	double dp[5];
 	double f[20];
+
+	diverge = true;
 
 	while (i++ < MAX_ITERATION_OPTIMIZATION && residue > tol)
 	{
@@ -818,18 +830,59 @@ void CelestialMath::alignNStars(const int N,
 
 		if (newresidue >= residue - tol)
 		{
-			printf("Converged.\n");
+			debug_if(CM_DEBUG, "Converged.\n");
+			diverge = false;
 			break;
 		}
 		else
 		{
 			residue = newresidue;
 		}
-		printf("Iteration %i, %f\t%f\t%f\t%f\t%f\tr=%f\n", i, pa.alt, pa.azi,
-				offset.dec_off, offset.ra_off, cone, residue);
+		debug_if(CM_DEBUG, "Iteration %i, %f\t%f\t%f\t%f\t%f\tr=%f\n", i,
+				pa.alt, pa.azi, offset.dec_off, offset.ra_off, cone, residue);
 	}
 
-	printf("Final result: %f\t%f\t%f\t%f\t%f\tr=%f\n", pa.alt, pa.azi,
-			offset.dec_off, offset.ra_off, cone, residue);
+	if (diverge)
+	{
+		debug_if(CM_DEBUG, "Diverged.\n");
+	}
 
+	debug_if(CM_DEBUG, "Final result: %f\t%f\t%f\t%f\t%f\tr=%f\n", pa.alt,
+			pa.azi, offset.dec_off, offset.ra_off, cone, residue);
+
+}
+
+EqCalibration CelestialMath::align(const int N, const AlignmentStar stars[],
+		const LocationCoordinates &loc, bool &diverge)
+{
+	EqCalibration calib;
+	calib.pa.alt = loc.lat;
+	if (N == 1)
+	{
+		calib.offset = alignOneStarForOffset(stars[0].star_ref_local(loc),
+				stars[0].star_meas);
+		diverge = false;
+	}
+	else
+	{
+		LocalEquatorialCoordinates star_ref[N];
+		MountCoordinates star_meas[N];
+		for (int i = 0; i < N; i++)
+		{
+			star_ref[i] = stars[i].star_ref_local(loc);
+			star_meas[i] = stars[i].star_meas;
+		}
+		if (N == 2)
+		{
+			alignTwoStars(star_ref, star_meas, loc, calib.pa, calib.offset,
+					diverge);
+		}
+		else
+		{
+			alignNStars(N, star_ref, star_meas, loc, calib.pa, calib.offset,
+					calib.cone, diverge);
+		}
+	}
+
+	return calib;
 }

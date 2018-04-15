@@ -31,7 +31,7 @@ class USBHAL {
 public:
     /* Configuration */
     USBHAL();
-    ~USBHAL();
+    virtual ~USBHAL();
     void connect(void);
     void disconnect(void);
     void configureDevice(void);

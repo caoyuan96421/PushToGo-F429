@@ -12,18 +12,19 @@
 #include "TelescopeConfiguration.h"
 #include "EqMountServer.h"
 #include "MCULoadMeasurement.h"
+#include "USBSerial.h"
 
 /**
  * Right-Ascenstion Axis
  */
 SPI ra_spi(PC_12, PC_11, PB_3_ALT0);
-AMIS30543StepperDriver ra_stepper(&ra_spi, PE_3, PB_7);
+AMIS30543StepperDriver *ra_stepper;
 
 /**
  * Declination Axis
  */
 SPI dec_spi(PE_6, PE_5, PE_2);
-AMIS30543StepperDriver dec_stepper(&dec_spi, PE_4, PC_8);
+AMIS30543StepperDriver *dec_stepper;
 
 /**
  * Clock object
@@ -84,10 +85,22 @@ EquatorialMount &telescopeHardwareInit()
 	{
 		delete eq_mount;
 	}
-	ra_axis = new AdaptiveAxis(telescope_config.getStepsPerDeg(), &ra_stepper,
-			telescope_config, telescope_config.isRAInvert(), "RA_Axis");
-	dec_axis = new AdaptiveAxis(telescope_config.getStepsPerDeg(), &dec_stepper,
-			telescope_config, telescope_config.isDECInvert(), "DEC_Axis");
+	if (ra_stepper != NULL)
+	{
+		delete ra_stepper;
+	}
+	if (dec_stepper != NULL)
+	{
+		delete dec_stepper;
+	}
+	ra_stepper = new AMIS30543StepperDriver(&ra_spi, PE_3, PB_7, NC, NC,
+			telescope_config.isRAInvert());
+	dec_stepper = new AMIS30543StepperDriver(&dec_spi, PE_4, PC_8, NC, NC,
+			telescope_config.isDECInvert());
+	ra_axis = new AdaptiveAxis(telescope_config.getStepsPerDeg(), ra_stepper,
+			telescope_config, "RA_Axis");
+	dec_axis = new AdaptiveAxis(telescope_config.getStepsPerDeg(), dec_stepper,
+			telescope_config, "DEC_Axis");
 	eq_mount = new EquatorialMount(*ra_axis, *dec_axis, clk,
 			telescope_config.getLocation());
 
@@ -97,12 +110,9 @@ EquatorialMount &telescopeHardwareInit()
 }
 
 /* Serial connection */
-UARTSerial pc(USBTX, USBRX, 115200);
-
-#include "USBSerial.h"
-USBSerial usb(0x10c4, 0xbbbb, 0x0001, 1);
-
-EqMountServer server_serial(usb, true);
+UARTSerial serial(USBTX, USBRX, 115200);
+USBSerial *usb = NULL;
+EqMountServer *server_serial;
 
 bool serverInitialized = false;
 
@@ -116,11 +126,15 @@ osStatus telescopeServerInit()
 		serverInitialized = true;
 		add_sys_commands();
 	}
-
-	while (!usb.configured())
-		Thread::wait(10);
-
-	server_serial.bind(*eq_mount);
+	if (!usb)
+	{
+		usb = new USBSerial(0x10c4, 0xbbbb, 0x0001, 0);
+	}
+	if (!server_serial)
+	{
+		server_serial = new EqMountServer(serial, true);
+	}
+	server_serial->bind(*eq_mount);
 
 	const char *str = "Server initialized.\n";
 	printf(str);

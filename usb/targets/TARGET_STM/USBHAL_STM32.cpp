@@ -29,6 +29,7 @@
 #ifndef USBSTM_HAL_UNSUPPORTED
 #include "USBHAL.h"
 #include "pinmap.h"
+#include "core_cm4.h"
 
 #include "USBHAL_STM32.h"
 
@@ -218,7 +219,9 @@ void USBHAL::EP0read(void) {
 	 uint8_t *pBuf = (uint8_t *)HALPriv->pBufRx0;
 	 HAL_StatusTypeDef ret;
 	 HALPriv->epComplete[EP0OUT] = 2;
+
 	 ret = HAL_PCD_EP_Receive(&hpcd, epIndex, pBuf, MAX_PACKET_SIZE_EP0 );
+
 	 MBED_ASSERT(ret!=HAL_BUSY);
 
 }
@@ -283,7 +286,9 @@ EP_STATUS USBHAL::endpointWrite(uint8_t endpoint, uint8_t *data, uint32_t size) 
     HAL_StatusTypeDef ret;
     // clean transmission end flag before requesting transmission
     HALPriv->epComplete[endpoint] = 2;
+
     ret = HAL_PCD_EP_Transmit(&hpcd, epIndex, data, size);
+
 	MBED_ASSERT(ret!=HAL_BUSY);
     // update the status
     if (ret != HAL_OK) return EP_INVALID; 

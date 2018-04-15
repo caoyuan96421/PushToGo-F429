@@ -133,7 +133,41 @@ struct MountCoordinates
 				remainder(ra_delta - offset.ra_off, 360), side);
 	}
 };
+/**
+ * Alignment star object
+ */
+struct AlignmentStar
+{
+	EquatorialCoordinates star_ref; /// Reference position of the star in the sky (in current epoch)
+	MountCoordinates star_meas;	/// Measured position of the star in mount coordinates
+	time_t timestamp;				/// UTC timestamp of the measurement
+	AlignmentStar()
+	{
+		timestamp = 0;
+	}
+	AlignmentStar(const EquatorialCoordinates & ref, MountCoordinates meas,
+			time_t t) :
+			star_ref(ref), star_meas(meas), timestamp(t)
+	{
+	}
+	LocalEquatorialCoordinates star_ref_local(const LocationCoordinates &loc) const;
+};
 
+struct EqCalibration
+{
+	IndexOffset offset;
+	AzimuthalCoordinates pa;
+	double cone;
+	EqCalibration() :
+			cone(0)
+	{
+	}
+	EqCalibration(const IndexOffset &off, const AzimuthalCoordinates p,
+			double c) :
+			offset(off), pa(p), cone(c)
+	{
+	}
+};
 /**
  * Utility functions for doing math on coordinates of the celestial sphere
  */
@@ -214,7 +248,7 @@ public:
 			LocalEquatorialCoordinates &offset);
 	static void alignTwoStars(const LocalEquatorialCoordinates star_ref[],
 			const MountCoordinates star_meas[], const LocationCoordinates &loc,
-			AzimuthalCoordinates &pa, IndexOffset &offset);
+			AzimuthalCoordinates &pa, IndexOffset &offset, bool &diverge);
 
 	/**
 	 * N-star alignment for finding PA misalignment, offset, and cone error
@@ -235,7 +269,12 @@ public:
 	static void alignNStars(const int N,
 			const LocalEquatorialCoordinates star_ref[],
 			const MountCoordinates star_meas[], const LocationCoordinates &loc,
-			AzimuthalCoordinates &pa, IndexOffset &offset, double &cone);
+			AzimuthalCoordinates &pa, IndexOffset &offset, double &cone, bool &diverge);
+
+	/**
+	 * Adaptor for EqMount
+	 */
+	static EqCalibration align(const int N, const AlignmentStar stars[], const LocationCoordinates &loc, bool &diverge);
 };
 
 #endif /* CELESTIALMATH_H_ */
