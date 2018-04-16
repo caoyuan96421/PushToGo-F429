@@ -30,12 +30,13 @@ void idle_hook()
 {
 	core_util_critical_section_enter();
 	MCULoadMeasurement::getInstance().setMCUActive(false);
-	sleep_manager_lock_deep_sleep();
-	sleep();
-	sleep_manager_unlock_deep_sleep();
-//	int i = 1000;
-//	while (i--)
-//		;
+//	sleep_manager_lock_deep_sleep();
+//	sleep();
+//	__WFI();
+//	sleep_manager_unlock_deep_sleep();
+	int i = 1000;
+	while (i--)
+		;
 	MCULoadMeasurement::getInstance().setMCUActive(true);
 	core_util_critical_section_exit();
 }

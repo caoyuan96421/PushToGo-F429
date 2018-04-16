@@ -111,10 +111,10 @@ EquatorialMount &telescopeHardwareInit()
 
 /* Serial connection */
 UARTSerial serial(USBTX, USBRX, 115200);
-USBSerial *usb = NULL;
 EqMountServer *server_serial;
 
 bool serverInitialized = false;
+
 
 osStatus telescopeServerInit()
 {
@@ -126,13 +126,11 @@ osStatus telescopeServerInit()
 		serverInitialized = true;
 		add_sys_commands();
 	}
-	if (!usb)
-	{
-		usb = new USBSerial(0x10c4, 0xbbbb, 0x0001, 0);
-	}
+
 	if (!server_serial)
 	{
-		server_serial = new EqMountServer(serial, true);
+		//server_serial = new EqMountServer(serial, true);
+		server_serial = new EqMountServer(USBSerial::getInstance(), true);
 	}
 	server_serial->bind(*eq_mount);
 
