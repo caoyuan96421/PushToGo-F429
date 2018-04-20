@@ -46,9 +46,6 @@ void Axis::task()
 		debug_if(AXIS_DEBUG, "%s: MSG %d %f %d 0x%8x\n", axisName, signal,
 				value, dir);
 
-		if (dir == AXIS_ROTATE_STOP) // Useless command
-			continue;
-
 		/*Check the type of the signal, and start corresponding operations*/
 		switch (signal)
 		{
@@ -105,9 +102,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 	Thread::signal_clr(AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL); // Clear flags
 	status = AXIS_SLEWING;
 	currentDirection = dir;
-	stepdir_t sd =
-			(dir == AXIS_ROTATE_POSITIVE) ?
-					STEP_FORWARD : STEP_BACKWARD;
+	stepdir_t sd = (dir == AXIS_ROTATE_POSITIVE) ? STEP_FORWARD : STEP_BACKWARD;
 
 	/* Calculate the angle to rotate*/
 	bool skip_slew = false;
@@ -138,9 +133,10 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			endSpeed = min(sqrt(delta * acceleration),
 					stepper->setFrequency(stepsPerDeg * endSpeed)
 							/ stepsPerDeg);
-			ramp_steps = (unsigned int) (endSpeed
-					/ (config.getAccelerationStepTime() / 1000.0)
-					/ acceleration);
+			ramp_steps =
+					(unsigned int) (endSpeed
+							/ (config.getAccelerationStepTime() / 1000.0)
+							/ acceleration);
 			if (ramp_steps < 1)
 				ramp_steps = 1;
 
@@ -348,13 +344,23 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 void Axis::track(axisrotdir_t dir)
 {
 	track_mode();
-	stepdir_t sd =
-			(dir == AXIS_ROTATE_POSITIVE) ?
-					STEP_FORWARD : STEP_BACKWARD;
-	currentSpeed = stepper->setFrequency(trackSpeed * stepsPerDeg)
-			/ stepsPerDeg;
-	currentDirection = dir;
-	stepper->start(sd);
+	if (trackSpeed != 0 && dir != AXIS_ROTATE_STOP)
+	{
+		stepdir_t sd =
+				(dir == AXIS_ROTATE_POSITIVE) ? STEP_FORWARD : STEP_BACKWARD;
+		currentSpeed = stepper->setFrequency(trackSpeed * stepsPerDeg)
+				/ stepsPerDeg;
+		currentDirection = dir;
+		stepper->start(sd);
+	}
+	else
+	{
+		// For DEC axis
+		dir = AXIS_ROTATE_STOP;
+		trackSpeed = 0;
+		currentSpeed = 0;
+		currentDirection = AXIS_ROTATE_POSITIVE;
+	}
 	status = AXIS_TRACKING;
 	Thread::signal_clr(
 	AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL | AXIS_GUIDE_SIGNAL);
@@ -392,10 +398,11 @@ void Axis::track(axisrotdir_t dir)
 								(guideTime_ms > 0) ?
 										AXIS_ROTATE_POSITIVE :
 										AXIS_ROTATE_NEGATIVE;
-						currentSpeed =
-								(currentDirection == guide_dir) ?
+
+						double newSpeed =
+								(guide_dir == currentDirection) ?
 										trackSpeed + guideSpeed :
-										trackSpeed - guideSpeed; /*Determine speed based on direction*/
+										trackSpeed - guideSpeed; /*Determine speed in the original direction (currentDirection)*/
 
 						// Clamp to maximum guide time
 						guideTime_ms = abs(guideTime_ms);
@@ -406,8 +413,35 @@ void Axis::track(axisrotdir_t dir)
 							guideTime_ms = config.getMaxGuideTime();
 						}
 
-						currentSpeed = stepper->setFrequency(
-								currentSpeed * stepsPerDeg) / stepsPerDeg; //set and update accurate speed
+						bool dirswitch = false;
+						if (newSpeed > 0)
+						{
+							currentSpeed = stepper->setFrequency(
+									newSpeed * stepsPerDeg) / stepsPerDeg; //set and update accurate speed
+							if (trackSpeed == 0)
+							{
+								// For DEC, we also need to start the motor
+								stepper->start(STEP_FORWARD); // Reverse direction
+							}
+						}
+						else if (newSpeed < 0)
+						{
+							//
+							stepper->stop();
+							currentSpeed = stepper->setFrequency(
+									-newSpeed * stepsPerDeg) / stepsPerDeg; //set and update accurate speed
+							stepper->start(
+									(currentDirection == AXIS_ROTATE_POSITIVE) ?
+											STEP_BACKWARD : STEP_FORWARD); // Reverse direction
+							dirswitch = true;
+						}
+						else
+						{
+							// newSpeed == 0, just stop the motor
+							currentSpeed = 0;
+							stepper->stop();
+							dirswitch = true; // Make sure to recover the original speed
+						}
 
 						uint32_t flags = osThreadFlagsWait(
 						AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL,
@@ -418,12 +452,25 @@ void Axis::track(axisrotdir_t dir)
 							stopped = true;
 							break;
 						}
-						else
+						if (dirswitch || trackSpeed == 0)
 						{
-							// Restore to normal speed
+							stepper->stop();
+							// Restart the motor in original direction
+							if (trackSpeed != 0)
+							{
+								stepper->start(
+										(currentDirection
+												== AXIS_ROTATE_POSITIVE) ?
+												STEP_FORWARD : STEP_BACKWARD); // Reverse direction
+							}
+						}
+						// Restore to normal speed
+						if (trackSpeed != 0)
 							currentSpeed = stepper->setFrequency(
 									trackSpeed * stepsPerDeg) / stepsPerDeg;
-						}
+						else
+							currentSpeed = 0;
+
 						// End guiding
 					}
 					else
@@ -450,7 +497,7 @@ void Axis::track(axisrotdir_t dir)
 
 Axis::~Axis()
 {
-	// Wait until the axis is stopped
+// Wait until the axis is stopped
 	if (status != AXIS_STOPPED)
 	{
 		stop();
@@ -460,7 +507,7 @@ Axis::~Axis()
 		}
 	}
 
-	// Terminate the task thread to prevent illegal access to destroyed objects.
+// Terminate the task thread to prevent illegal access to destroyed objects.
 	task_thread->terminate();
 	delete task_thread;
 	delete taskName;

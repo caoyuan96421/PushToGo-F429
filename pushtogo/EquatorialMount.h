@@ -27,6 +27,14 @@ typedef enum
 } nudgedir_t;
 
 /**
+ * Direction of guide
+ */
+typedef enum
+{
+	GUIDE_EAST = 1, GUIDE_WEST = 2, GUIDE_NORTH = 3, GUIDE_SOUTH = 4,
+} guidedir_t;
+
+/**
  * Object that represents an equatorial mount with two perpendicular axis called RA and Dec.
  */
 class EquatorialMount: public Mount
@@ -91,6 +99,11 @@ public:
 	osStatus stopNudge();
 
 	osStatus startTracking();
+
+	/**
+	 * Guide on specified direction for specified time
+	 */
+	osStatus guide(guidedir_t dir, int ms);
 
 	/*Calibration related functions*/
 	/**
@@ -236,6 +249,16 @@ public:
 	void setTrackSpeedSidereal(double rate)
 	{
 		ra.setTrackSpeedSidereal(rate);
+	}
+
+	/**
+	 * Set guiding speed of RA axis
+	 * @param rate new speed in sidereal rate
+	 */
+	void setGuideSpeedSidereal(double rate)
+	{
+		ra.setGuideSpeedSidereal(rate);
+		dec.setGuideSpeedSidereal(rate);
 	}
 
 	/**

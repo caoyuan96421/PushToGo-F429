@@ -51,10 +51,9 @@ public:
 	 * @param invert Whether the stepper direction should be inverted
 	 */
 	Axis(double stepsPerDeg, StepperMotor *stepper,
-			TelescopeConfiguration &config,
-			const char *name = "Axis") :
-			stepsPerDeg(stepsPerDeg), stepper(stepper), axisName(
-					name), config(config), currentSpeed(0), currentDirection(
+			TelescopeConfiguration &config, const char *name = "Axis") :
+			stepsPerDeg(stepsPerDeg), stepper(stepper), axisName(name), config(
+					config), currentSpeed(0), currentDirection(
 					AXIS_ROTATE_POSITIVE), slewSpeed(
 					config.getDefaultSlewSpeed()), trackSpeed(
 					config.getDefaultTrackSpeedSidereal() * sidereal_speed), correctionSpeed(
@@ -187,14 +186,13 @@ public:
 	 * Perform a goto to a specified angle (in Radian) in the specified direction with slewing rate
 	 * It will perform an acceleration, a GoTo, and a deceleration before returning
 	 * @param dir Rotation direction
-	 * @param angleDeg Angle to rotate
+	 * @param time_ms guiding time in milliseconds
 	 * @return osStatus
 	 */
-	osStatus guide(axisrotdir_t dir, double time)
+	osStatus guide(axisrotdir_t dir, int time_ms)
 	{
 		if (dir == AXIS_ROTATE_NEGATIVE)
-			time = -time;
-		int32_t time_ms = (int) (time * 1000);
+			time_ms = -time_ms;
 		// Put the guide pulse into the queue
 		osStatus s;
 		if ((s = guide_queue.put((void*) (time_ms))) != osOK)
@@ -281,7 +279,7 @@ public:
 	 */
 	void setTrackSpeedSidereal(double trackSpeed)
 	{
-		if (trackSpeed > 0)
+		if (trackSpeed >= 0)
 		{
 			this->trackSpeed = trackSpeed * sidereal_speed;
 		}
@@ -297,13 +295,8 @@ public:
 	 */
 	void setGuideSpeedSidereal(double guideSpeed)
 	{
-		guideSpeed *= sidereal_speed;
-		if (guideSpeed <= 0.01 * trackSpeed)
-			this->guideSpeed = 0.01 * trackSpeed;
-		else if (guideSpeed >= 0.99 * trackSpeed)
-			this->guideSpeed = 0.99 * trackSpeed;
-		else
-			this->guideSpeed = guideSpeed;
+		if (guideSpeed > 0)
+			this->guideSpeed = guideSpeed * sidereal_speed;
 	}
 
 	double getCorrectionSpeedSidereal() const

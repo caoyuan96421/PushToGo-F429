@@ -17,6 +17,7 @@ EquatorialMount::EquatorialMount(Axis& ra, Axis& dec, UTCClock& clk,
 	// Set RA and DEC positions to zero
 	ra.setAngleDeg(0);
 	dec.setAngleDeg(0);
+	dec.setTrackSpeedSidereal(0); // Make sure dec doesn't move during tracking
 	updatePosition();
 }
 
@@ -96,7 +97,13 @@ osStatus EquatorialMount::startTracking()
 	}
 	axisrotdir_t ra_dir = AXIS_ROTATE_POSITIVE; // Tracking is always going to positive hour angle direction, which is defined as positive.
 	status = MOUNT_TRACKING;
-	return ra.startTracking(ra_dir);
+	osStatus sr, sd;
+	sr = ra.startTracking(ra_dir);
+	sd = dec.startTracking(AXIS_ROTATE_STOP);
+	if (sr != osOK || sd != osOK)
+		return osErrorResource;
+	else
+		return osOK;
 }
 
 osStatus EquatorialMount::startNudge(nudgedir_t newdir)
@@ -137,12 +144,12 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 			if (newdir & NUDGE_EAST)
 			{
 				// Nudge east
-				ra_dir = AXIS_ROTATE_NEGATIVE;
+				ra_dir = AXIS_ROTATE_POSITIVE;
 			}
 			else if (newdir & NUDGE_WEST)
 			{
 				// Nudge west
-				ra_dir = AXIS_ROTATE_POSITIVE;
+				ra_dir = AXIS_ROTATE_NEGATIVE;
 			}
 			else
 			{
@@ -344,4 +351,30 @@ osStatus EquatorialMount::recalibrate()
 	calibration = newcalib;
 
 	return osOK;
+}
+
+osStatus EquatorialMount::guide(guidedir_t dir, int ms)
+{
+	// Check we are in tracking mode
+	if (status != MOUNT_TRACKING)
+	{
+		return osErrorResource;
+	}
+	switch (dir)
+	{
+	case GUIDE_EAST:
+		return ra.guide(AXIS_ROTATE_POSITIVE, ms);
+	case GUIDE_WEST:
+		return ra.guide(AXIS_ROTATE_NEGATIVE, ms);
+	case GUIDE_NORTH:
+		return dec.guide(
+				(curr_pos.side == PIER_SIDE_WEST) ?
+						AXIS_ROTATE_NEGATIVE : AXIS_ROTATE_POSITIVE, ms);
+	case GUIDE_SOUTH:
+		return dec.guide(
+				(curr_pos.side == PIER_SIDE_WEST) ?
+						AXIS_ROTATE_POSITIVE : AXIS_ROTATE_NEGATIVE, ms);
+	default:
+		return osErrorParameter;
+	}
 }

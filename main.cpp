@@ -25,44 +25,44 @@ void blink()
 	}
 }
 
-Thread printer_th(osPriorityNormal, 2048, NULL, "Printer Thread");
-/* Mail */
-typedef struct
-{
-	char msg[128];
-} mail_t;
-
-typedef Mail<mail_t, 256> MB_t;
-MB_t mbox;
-Serial pc(USBTX, USBRX, 115200);
-
-Timer tim;
-void printer(MB_t *mbox)
-{
-	while (true)
-	{
-		mail_t *m = (mail_t *) mbox->get().value.p;
-		pc.printf("%s\r\n", m->msg);
-		mbox->free(m);
-	}
-}
+//Thread printer_th(osPriorityNormal, 2048, NULL, "Printer Thread");
+///* Mail */
+//typedef struct
+//{
+//	char msg[128];
+//} mail_t;
+//
+//typedef Mail<mail_t, 256> MB_t;
+//MB_t mbox;
+//Serial pc(USBTX, USBRX, 115200);
+//
+//Timer tim;
+//void printer(MB_t *mbox)
+//{
+//	while (true)
+//	{
+//		mail_t *m = (mail_t *) mbox->get().value.p;
+//		pc.printf("%s\r\n", m->msg);
+//		mbox->free(m);
+//	}
+//}
 
 /**
  * Printf for debugging use. Takes about 20us for each call. Can be called from any context
  */
-void xprintf(const char* format, ...)
-{
-	uint16_t len;
-	va_list argptr;
-	va_start(argptr, format);
-
-	mail_t *m = mbox.alloc();
-	len = sprintf(m->msg, "%9d>", tim.read_us());
-	len += vsprintf(&m->msg[len], format, argptr);
-	mbox.put(m);
-
-	va_end(argptr);
-}
+//void xprintf(const char* format, ...)
+//{
+//	uint16_t len;
+//	va_list argptr;
+//	va_start(argptr, format);
+//
+//	mail_t *m = mbox.alloc();
+//	len = sprintf(m->msg, "%9d>", tim.read_us());
+//	len += vsprintf(&m->msg[len], format, argptr);
+//	mbox.put(m);
+//
+//	va_end(argptr);
+//}
 extern void test_stepper();
 extern void testmath();
 extern void test_em();
@@ -89,9 +89,9 @@ int main()
 	printf("System initialized.\n");
 
 	blinker_thread.start(blink);
-	tim.start();
-	printer_th.start(callback(printer, &mbox));
-	xprintf("System initialized");
+//	tim.start();
+//	printer_th.start(callback(printer, &mbox));
+//	xprintf("System initialized");
 //
 //	if (fs.mount(&sdb) == 0)
 //	{

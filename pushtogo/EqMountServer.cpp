@@ -301,6 +301,14 @@ static int eqmount_speed(EqMountServer *server, int argn, char *argv[])
 			}
 			server->getEqMount()->setTrackSpeedSidereal(speed);
 		}
+		else if (strcmp(argv[0], "guide") == 0)
+		{
+			if (speed <= 0 || speed > 64)
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+			server->getEqMount()->setGuideSpeedSidereal(speed);
+		}
 	}
 	else
 	{
@@ -503,9 +511,45 @@ static int eqmount_help(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_babble(EqMountServer *server, int argn, char *argv[]){
-	stprintf(server->getStream(), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
-	stprintf(server->getStream(), "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n");
+static int eqmount_guide(EqMountServer *server, int argn, char *argv[])
+{
+
+	if (argn != 2)
+	{
+		stprintf(server->getStream(),
+				"Usage: guide {north|west|south|east} milliseconds\r\n");
+		return ERR_WRONG_NUM_PARAM;
+	}
+
+	char *tp;
+	int ms = strtod(argv[1], &tp);
+	if (tp == argv[1] || ms < 1
+			|| ms > TelescopeConfiguration::getInstance().getMaxGuideTime())
+	{
+		return ERR_PARAM_OUT_OF_RANGE;
+	}
+
+	if (strcmp("north", argv[0]) == 0)
+	{
+		server->getEqMount()->guide(GUIDE_NORTH, ms);
+	}
+	else if (strcmp("south", argv[0]) == 0)
+	{
+		server->getEqMount()->guide(GUIDE_SOUTH, ms);
+	}
+	else if (strcmp("west", argv[0]) == 0)
+	{
+		server->getEqMount()->guide(GUIDE_WEST, ms);
+	}
+	else if (strcmp("east", argv[0]) == 0)
+	{
+		server->getEqMount()->guide(GUIDE_EAST, ms);
+	}
+	else
+	{
+		return ERR_PARAM_OUT_OF_RANGE;
+	}
+
 	return 0;
 }
 
@@ -630,8 +674,7 @@ ServerCommand commandlist[MAX_COMMAND] =
 				eqmount_track), 		/// Track
 		ServerCommand("readpos", "Read current RA/DEC position",
 				eqmount_readpos), /// Read Position
-		ServerCommand("babble", "Print random junk",
-				eqmount_babble), /// print junk
+		ServerCommand("guide", "Guide on specified direction", eqmount_guide), /// Guide
 		ServerCommand("speed", "Set slew and tracking speed", eqmount_speed), /// Set speed
 		ServerCommand("align", "Star alignment", eqmount_align), /// Alignment
 		ServerCommand("help", "Print this help menu", eqmount_help), /// Help menu
