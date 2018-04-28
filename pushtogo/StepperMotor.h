@@ -64,6 +64,18 @@ public:
 	virtual double setFrequency(double freq) = 0;
 
 	/**
+	 * Turn off the motor power
+	 */
+	virtual void poweroff(){
+	}
+
+	/**
+	 * Turn on the motor power
+	 */
+	virtual void poweron(){
+	}
+
+	/**
 	 * Set microsteps
 	 * @param microstep Microstep setting to use
 	 * @note to be overriden by application if available

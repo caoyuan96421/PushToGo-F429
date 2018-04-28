@@ -208,10 +208,18 @@ static int eqmount_systime(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
+static int eqmount_reboot(EqMountServer *server, int argn, char *argv[])
+{
+	NVIC_SystemReset();
+	return 0;
+}
+
 static void add_sys_commands()
 {
 	EqMountServer::addCommand(
 			ServerCommand("sys", "Print system information", eqmount_sys));
 	EqMountServer::addCommand(
 			ServerCommand("systime", "Print system time", eqmount_systime));
+	EqMountServer::addCommand(
+			ServerCommand("reboot", "Reboot the system", eqmount_reboot));
 }

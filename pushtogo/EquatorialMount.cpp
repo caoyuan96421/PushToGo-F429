@@ -19,6 +19,9 @@ EquatorialMount::EquatorialMount(Axis& ra, Axis& dec, UTCClock& clk,
 	dec.setAngleDeg(0);
 	dec.setTrackSpeedSidereal(0); // Make sure dec doesn't move during tracking
 	updatePosition();
+
+	// Set in tracking mode
+	startTracking();
 }
 
 osStatus EquatorialMount::goTo(double ra_dest, double dec_dest)
@@ -30,27 +33,44 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 {
 
 	debug_if(EM_DEBUG, "dest ra=%.2f, dec=%.2f\n", dest.ra, dest.dec);
-	LocalEquatorialCoordinates dest_local =
-			CelestialMath::equatorialToLocalEquatorial(dest, clock.getTime(),
-					location);
-	// Apply PA misalignment
-	dest_local = CelestialMath::applyMisalignment(pa_trans, dest_local);
-	// Apply Cone error
-	dest_local = CelestialMath::applyConeError(dest_local, calibration.cone);
-	// Convert to Mount coordinates. Automatically determine the pier side, then apply offset
-	MountCoordinates dest_mount = CelestialMath::localEquatorialToMount(
-			dest_local, PIER_SIDE_AUTO) + calibration.offset;
 
-	return goToMount(dest_mount);
+	// The mount is almost at position after the first run, but the time lapsed since the start of slew must be corrected. Simply do goTo again
+	for (int i = 0; i < 2; i++)
+	{
+		LocalEquatorialCoordinates dest_local =
+				CelestialMath::equatorialToLocalEquatorial(dest,
+						clock.getTime(), location);
+		// Apply PA misalignment
+		dest_local = CelestialMath::applyMisalignment(pa_trans, dest_local);
+		// Apply Cone error
+		dest_local = CelestialMath::applyConeError(dest_local,
+				calibration.cone);
+		// Convert to Mount coordinates. Automatically determine the pier side, then apply offset
+		MountCoordinates dest_mount = CelestialMath::localEquatorialToMount(
+				dest_local, PIER_SIDE_AUTO) + calibration.offset;
+
+		osStatus s = goToMount(dest_mount);
+		if (s != osOK)
+			return s;
+	}
+
+	return osOK;
 }
 
 osStatus EquatorialMount::goToMount(MountCoordinates dest_mount)
 {
-	if (status != MOUNT_STOPPED)
+	bool was_tracking = false;
+	if (status == MOUNT_TRACKING)
+	{
+		was_tracking = true;
+		stopWait();
+	}
+	else if (status != MOUNT_STOPPED)
 	{
 		debug("EM: goTo requested while mount is not stopped.\n");
 		return osErrorParameter;
 	}
+	mutex_execution.lock();
 	debug_if(EM_DEBUG, "EM: goTo\n");
 	debug_if(EM_DEBUG, "dstmnt ra=%.2f, dec=%.2f\n", dest_mount.ra_delta,
 			dest_mount.dec_delta);
@@ -77,8 +97,17 @@ osStatus EquatorialMount::goToMount(MountCoordinates dest_mount)
 
 	ra.waitForSlew();
 	dec.waitForSlew();
-	status = MOUNT_STOPPED;
+
 	debug_if(EM_DEBUG, "EM: slewing finished\n");
+
+	status = MOUNT_STOPPED;
+
+	mutex_execution.unlock();
+
+	if (was_tracking)
+	{
+		startTracking();
+	}
 
 	updatePosition(); // Update current position
 
@@ -95,11 +124,14 @@ osStatus EquatorialMount::startTracking()
 		debug("EM: tracking requested while mount is not stopped.\n");
 		return osErrorParameter;
 	}
+
+	mutex_execution.lock();
 	axisrotdir_t ra_dir = AXIS_ROTATE_POSITIVE; // Tracking is always going to positive hour angle direction, which is defined as positive.
 	status = MOUNT_TRACKING;
 	osStatus sr, sd;
 	sr = ra.startTracking(ra_dir);
 	sd = dec.startTracking(AXIS_ROTATE_STOP);
+	mutex_execution.unlock();
 	if (sr != osOK || sd != osOK)
 		return osErrorResource;
 	else
@@ -108,24 +140,33 @@ osStatus EquatorialMount::startTracking()
 
 osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 { // Update new status
-	if (newdir == NUDGE_NONE) // Stop nudging
+	if (status != MOUNT_STOPPED && status != MOUNT_TRACKING
+			&& status != MOUNT_NUDGING && status != MOUNT_NUDGING_TRACKING)
 	{
-		mountstatus_t oldstatus = status;
-		stopWait(); // Stop the mount
-		if (oldstatus == MOUNT_NUDGING)
+		return osErrorParameter;
+	}
+	osStatus s = osOK;
+	mutex_execution.lock();
+	if (newdir == NUDGE_NONE) // Stop nudging if being nudged
+	{
+		if (status & MOUNT_NUDGING)
 		{
-			// Stop the mount
-		}
-		else if (oldstatus == MOUNT_NUDGING_TRACKING)
-		{
-			// Get to tracking state
-			ra.setSlewSpeed(nudgeSpeed); // restore the slew rate of RA
-			startTracking();
+			mountstatus_t oldstatus = status;
+			stopWait(); // Stop the mount
+			if (oldstatus == MOUNT_NUDGING)
+			{
+				// Stop the mount
+			}
+			else if (oldstatus == MOUNT_NUDGING_TRACKING)
+			{
+				// Get to tracking state
+				ra.setSlewSpeed(nudgeSpeed); // restore the slew rate of RA
+				startTracking();
+			}
 		}
 	}
 	else
-	{
-		osStatus s;
+	{ // newdir is not NUDGE_NONE
 		updatePosition(); // Update current position, because we need to know the current pier side
 		bool ra_changed = false, dec_changed = false;
 		axisrotdir_t ra_dir, dec_dir;
@@ -144,12 +185,12 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 			if (newdir & NUDGE_EAST)
 			{
 				// Nudge east
-				ra_dir = AXIS_ROTATE_POSITIVE;
+				ra_dir = AXIS_ROTATE_NEGATIVE;
 			}
 			else if (newdir & NUDGE_WEST)
 			{
 				// Nudge west
-				ra_dir = AXIS_ROTATE_NEGATIVE;
+				ra_dir = AXIS_ROTATE_POSITIVE;
 			}
 			else
 			{
@@ -199,19 +240,17 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 		// DEC axis is ok to start regardless of tracking state
 		if (dec_changed && dec_dir != AXIS_ROTATE_STOP)
 		{
-			if ((s = dec.startSlewingIndefinite(dec_dir)) != osOK)
-				return s;
+			s = dec.startSlewingIndefinite(dec_dir);
 		}
 
 		// Now RA
-		if (ra_changed)
+		if (ra_changed && s == osOK)
 		{
 			if (status & MOUNT_TRACKING)
 			{ // In tracking mode now
 				if (ra_dir == AXIS_ROTATE_STOP)
 				{ // resume tracking
-					if ((s = ra.startTracking(AXIS_ROTATE_POSITIVE)) != osOK)
-						return s; // Tracking is always in positive RA
+					s = ra.startTracking(AXIS_ROTATE_POSITIVE);
 				}
 				else
 				{
@@ -224,25 +263,19 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 					{
 						// Same direction as tracking
 						ra.setSlewSpeed(nudgeSpeed + trackSpeed);
-						if ((s = ra.startSlewingIndefinite(AXIS_ROTATE_POSITIVE))
-								!= osOK)
-							return s;
+						s = ra.startSlewingIndefinite(AXIS_ROTATE_POSITIVE);
 					}
 					else if (nudgeSpeed < trackSpeed)
 					{ // ra_dir == AXIS_ROTATE_NEGATIVE
 					  // Partially canceling the tracking speed
 						ra.setSlewSpeed(trackSpeed - nudgeSpeed);
-						if ((s = ra.startSlewingIndefinite(AXIS_ROTATE_POSITIVE))
-								!= osOK)
-							return s;
+						s = ra.startSlewingIndefinite(AXIS_ROTATE_POSITIVE);
 					}
 					else if (nudgeSpeed > trackSpeed)
 					{						// ra_dir == AXIS_ROTATE_NEGATIVE
 											// Direction inverted
 						ra.setSlewSpeed(nudgeSpeed - trackSpeed);
-						if ((s = ra.startSlewingIndefinite(AXIS_ROTATE_NEGATIVE))
-								!= osOK)
-							return s;
+						ra.startSlewingIndefinite(AXIS_ROTATE_NEGATIVE);
 					}
 					// else would be nudgeSpeed == trackSpeed, and we don't need to start the RA Axis
 				}
@@ -252,8 +285,7 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 				// In non-tracking mode
 				if (ra_dir != AXIS_ROTATE_STOP)
 				{
-					if ((s = ra.startSlewingIndefinite(ra_dir)) != osOK)
-						return s;
+					s = ra.startSlewingIndefinite(ra_dir);
 				}
 			}
 		}
@@ -264,8 +296,9 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 		else
 			status = MOUNT_NUDGING;
 	}
+	mutex_execution.unlock();
 
-	return osOK;
+	return s;
 }
 
 osStatus EquatorialMount::stopNudge()
@@ -363,9 +396,9 @@ osStatus EquatorialMount::guide(guidedir_t dir, int ms)
 	switch (dir)
 	{
 	case GUIDE_EAST:
-		return ra.guide(AXIS_ROTATE_POSITIVE, ms);
-	case GUIDE_WEST:
 		return ra.guide(AXIS_ROTATE_NEGATIVE, ms);
+	case GUIDE_WEST:
+		return ra.guide(AXIS_ROTATE_POSITIVE, ms);
 	case GUIDE_NORTH:
 		return dec.guide(
 				(curr_pos.side == PIER_SIDE_WEST) ?

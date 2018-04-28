@@ -36,7 +36,7 @@ AMIS30543StepperDriver::AMIS30543StepperDriver(SPI *spi, PinName cs,
 
 	/*Perform initialization*/
 	writeReg(CR0, 0x00); // 1/32 step
-	writeReg(CR1, 0x03); // PWM double freq, V-slope = 35V/us
+	writeReg(CR1, 0x00); //
 	writeReg(CR2, 0x80); // MOTEN = 1
 	writeReg(CR3, 0x00); // 1/32 step
 
@@ -306,3 +306,16 @@ inline void AMIS30543StepperDriver::deassertCS()
 	cs = 1;
 }
 
+void AMIS30543StepperDriver::poweron()
+{
+	writeReg(CR2, 0x80); // MOTEN = 80, start driving the motor
+	writeReg(CR2, 0x80); // MOTEN = 80, start driving the motor
+	writeReg(CR2, 0x80); // MOTEN = 80, start driving the motor
+}
+
+void AMIS30543StepperDriver::poweroff()
+{
+	writeReg(CR2, 0x00); // MOTEN = 0, stop driving the motor
+	writeReg(CR2, 0x00); // MOTEN = 0, stop driving the motor
+	writeReg(CR2, 0x00); // MOTEN = 0, stop driving the motor
+}

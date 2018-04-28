@@ -531,19 +531,19 @@ static int eqmount_guide(EqMountServer *server, int argn, char *argv[])
 
 	if (strcmp("north", argv[0]) == 0)
 	{
-		server->getEqMount()->guide(GUIDE_NORTH, ms);
+		return server->getEqMount()->guide(GUIDE_NORTH, ms);
 	}
 	else if (strcmp("south", argv[0]) == 0)
 	{
-		server->getEqMount()->guide(GUIDE_SOUTH, ms);
+		return server->getEqMount()->guide(GUIDE_SOUTH, ms);
 	}
 	else if (strcmp("west", argv[0]) == 0)
 	{
-		server->getEqMount()->guide(GUIDE_WEST, ms);
+		return server->getEqMount()->guide(GUIDE_WEST, ms);
 	}
 	else if (strcmp("east", argv[0]) == 0)
 	{
-		server->getEqMount()->guide(GUIDE_EAST, ms);
+		return server->getEqMount()->guide(GUIDE_EAST, ms);
 	}
 	else
 	{
@@ -561,7 +561,7 @@ static int eqmount_time(EqMountServer *server, int argn, char *argv[])
 
 	if (argn >= 2)
 	{
-		return 1;
+		return ERR_WRONG_NUM_PARAM;
 	}
 	else if (argn == 1)
 	{
@@ -588,6 +588,14 @@ static int eqmount_time(EqMountServer *server, int argn, char *argv[])
 		{
 			t += (int) (remainder(server->getEqMount()->getLocation().lon, 360)
 					* 240);
+			ctime_r(&t, buf);
+			stprintf(server->getStream(), "%s\r\n", buf);
+			return 0;
+		}
+		else if (strcmp(argv[0], "zone") == 0)
+		{
+			t += (int) (TelescopeConfiguration::getInstance().getTimezone()
+					* 3600);
 			ctime_r(&t, buf);
 			stprintf(server->getStream(), "%s\r\n", buf);
 			return 0;

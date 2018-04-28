@@ -47,7 +47,7 @@ protected:
 	UTCClock &clock; /// Clock
 
 	Mutex mutex_update; /// Mutex to lock position updating
-	Mutex mutex_motion; /// Mutex to lock motion related functions
+	Mutex mutex_execution; /// Mutex to lock motion related functions
 
 	LocationCoordinates location;   /// Current location (GPS coordinates)
 	bool south;	/// If we are in south semisphere
@@ -238,8 +238,10 @@ public:
 	 */
 	void setSlewSpeed(double rate)
 	{
+		mutex_execution.lock();
 		ra.setSlewSpeed(rate);
 		dec.setSlewSpeed(rate);
+		mutex_execution.unlock();
 	}
 
 	/**
@@ -248,7 +250,9 @@ public:
 	 */
 	void setTrackSpeedSidereal(double rate)
 	{
+		mutex_execution.lock();
 		ra.setTrackSpeedSidereal(rate);
+		mutex_execution.unlock();
 	}
 
 	/**
@@ -257,8 +261,10 @@ public:
 	 */
 	void setGuideSpeedSidereal(double rate)
 	{
+		mutex_execution.lock();
 		ra.setGuideSpeedSidereal(rate);
 		dec.setGuideSpeedSidereal(rate);
+		mutex_execution.unlock();
 	}
 
 	/**
@@ -267,8 +273,10 @@ public:
 	 */
 	void setAcceleration(double acc)
 	{
+		mutex_execution.lock();
 		ra.setAcceleration(acc);
 		dec.setAcceleration(acc);
+		mutex_execution.unlock();
 	}
 
 	/**

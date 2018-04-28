@@ -38,6 +38,10 @@ public:
 
 	void setCurrent(double current);
 
+	void poweron();
+	void poweroff();
+
+
 protected:
 	typedef enum
 	{

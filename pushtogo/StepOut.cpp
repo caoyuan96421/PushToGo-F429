@@ -77,7 +77,8 @@ int64_t StepOut::getCount()
 		return stepCount;
 	else
 	{
-		return stepCount + (int64_t) (freq * tim.read_us() / 1.0E6); /*Calculate count at now*/
+		// Fixed: use read_high_resolution_us() to prevent overflow every ~30min
+		return stepCount + (int64_t) (freq * tim.read_high_resolution_us() / 1.0E6); /*Calculate count at now*/
 	}
 }
 
