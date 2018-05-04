@@ -34,7 +34,7 @@ RTCClock clk;
 /**
  * SD card reader hardware configuration
  */
-SDBlockDevice sdb(PA_7, PB_4, PA_5, PC_13);
+SDBlockDevice sd(PA_7, PB_4, PA_5, PC_13);
 FATFileSystem fs("sdcard");
 
 const char *config_file_path = "/sdcard/telescope.cfg";
@@ -50,7 +50,7 @@ EquatorialMount &telescopeHardwareInit()
 			TelescopeConfiguration::getInstance();
 	// Read configuration
 	printf("Mounting SD card...\n");
-	if (fs.mount(&sdb) != 0)
+	if (fs.mount(&sd) != 0)
 	{
 		debug(
 				"Error: failed to mount SD card. Falling back to default configuration.\n");

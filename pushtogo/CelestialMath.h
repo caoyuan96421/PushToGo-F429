@@ -275,6 +275,17 @@ public:
 	 * Adaptor for EqMount
 	 */
 	static EqCalibration align(const int N, const AlignmentStar stars[], const LocationCoordinates &loc, bool &diverge);
+
+	/*Utility functions*/
+
+	/*
+	 * Convert HMS notation such as 21h54m31.6s to degrees (counting from 0h0m0s = 0degree, from -180 ~ 180 degrees)
+	 */
+	static double parseHMSAngle(char *hms);
+
+
+	static double parseDMSAngle(char *dms);
+
 };
 
 #endif /* CELESTIALMATH_H_ */

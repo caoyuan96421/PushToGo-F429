@@ -886,3 +886,83 @@ EqCalibration CelestialMath::align(const int N, const AlignmentStar stars[],
 
 	return calib;
 }
+
+double CelestialMath::parseHMSAngle(char* hms)
+{
+	char *h = strchr(hms, 'h');
+	char *m = strchr(hms, 'm');
+	char *s = strchr(hms, 's');
+	if (h == NULL || m == NULL || s == NULL || !(h < m && m < s))
+	{
+		return NAN;
+	}
+
+	*h = '\0';
+	*m = '\0';
+	*s = '\0';
+
+	char *tp;
+	int hour = strtol(hms, &tp, 10);
+	if (tp == hms)
+	{
+		return NAN;
+	}
+	int minute = strtol(h + 1, &tp, 10);
+	if (tp == h + 1)
+	{
+		return NAN;
+	}
+	double second = strtod(m + 1, &tp);
+	if (tp == m + 1)
+	{
+		return NAN;
+	}
+
+	if (!(hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59 && second >= 0
+			&& second <= 60))
+	{
+		return NAN;
+	}
+
+	return remainder((hour + minute / 60 + second / 3600) * 15, 360);
+}
+
+double CelestialMath::parseDMSAngle(char* dms)
+{
+	char *d = strchr(dms, 'd');
+	char *m = strchr(dms, 'm');
+	char *s = strchr(dms, 's');
+	if (d == NULL || m == NULL || s == NULL || !(d < m && m < s))
+	{
+		return NAN;
+	}
+
+	*d = '\0';
+	*m = '\0';
+	*s = '\0';
+
+	char *tp;
+	int degree = strtol(dms, &tp, 10);
+	if (tp == dms)
+	{
+		return NAN;
+	}
+	int arcminute = strtol(d + 1, &tp, 10);
+	if (tp == d + 1)
+	{
+		return NAN;
+	}
+	double arcsecond = strtod(m + 1, &tp);
+	if (tp == m + 1)
+	{
+		return NAN;
+	}
+
+	if (!(degree >= -180.0 && degree <= 180.0 && arcminute >= 0 && arcminute <= 59 && arcsecond >= 0
+			&& arcsecond <= 60))
+	{
+		return NAN;
+	}
+
+	return remainder((degree + arcminute / 60 + arcsecond / 3600), 360);
+}

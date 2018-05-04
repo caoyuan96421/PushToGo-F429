@@ -229,18 +229,35 @@ static int eqmount_goto(EqMountServer *server, int argn, char *argv[])
 			return server->getEqMount()->goToIndex();
 		}
 	}
-	else if (argn == 2)
+	else if (argn == 2 || (argn == 3 && strcmp(argv[0], "eq") == 0))
 	{
-		char *tp;
-		double ra = strtod(argv[0], &tp);
-		if (tp == argv[0])
+		if (argn == 3 && strcmp(argv[0], "eq") == 0)
 		{
-			return ERR_PARAM_OUT_OF_RANGE;
+			argv[0] = argv[1];
+			argv[1] = argv[2];
 		}
-		double dec = strtod(argv[1], &tp);
-		if (tp == argv[1])
+		char *tp;
+		// First try HMS format
+		double ra = CelestialMath::parseHMSAngle(argv[0]);
+		if (isnan(ra))
 		{
-			return ERR_PARAM_OUT_OF_RANGE;
+			// If doesn't work, then we use as a double
+			ra = strtod(argv[0], &tp);
+			if (tp == argv[0])
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+		}
+		// First try DMS format
+		double dec = CelestialMath::parseDMSAngle(argv[1]);
+		if (isnan(dec))
+		{
+			// If doesn't work, then we use as a double
+			dec = strtod(argv[1], &tp);
+			if (tp == argv[1])
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
 		}
 
 		if (!((ra <= 180.0) && (ra >= -180.0) && (dec <= 90.0) && (dec >= -90.0)))
@@ -249,6 +266,32 @@ static int eqmount_goto(EqMountServer *server, int argn, char *argv[])
 		osStatus s;
 		if ((s = server->getEqMount()->goTo(ra, dec)) != osOK)
 			return s;
+	}
+	else if (argn == 3)
+	{
+		if (strcmp(argv[0], "mount") == 0)
+		{
+			char *tp;
+			double ra = strtod(argv[1], &tp);
+			if (tp == argv[1])
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+			double dec = strtod(argv[2], &tp);
+			if (tp == argv[2])
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+
+			if (!((ra <= 180.0) && (ra >= -180.0) && (dec <= 180.0)
+					&& (dec >= -180.0)))
+				return ERR_PARAM_OUT_OF_RANGE;
+
+			osStatus s;
+			if ((s = server->getEqMount()->goToMount(MountCoordinates(dec, ra)))
+					!= osOK)
+				return s;
+		}
 	}
 	else
 	{

@@ -28,7 +28,7 @@ void StepOut::stop()
 		core_util_critical_section_enter();
 		status = IDLE;
 		this->write(0);
-		stepCount += (int64_t) (((double) tim.read_us()) / 1e6 * freq);
+		stepCount += (int64_t) (freq * tim.read_high_resolution_us() / 1.0E6);
 		core_util_critical_section_exit();
 	}
 }
@@ -37,7 +37,12 @@ double StepOut::setFrequency(double frequency)
 {
 	if (frequency > 0)
 	{
-		int us_period = ceil(1.0E6 / frequency); /*Ceil to the next microsecond*/
+		int64_t us_period = ceil(1.0E6 / frequency); /*Ceil to the next microsecond*/
+		if (us_period > INT_MAX)
+		{
+			// Prevent overflow
+			us_period = INT_MAX;
+		}
 		if (status == IDLE)
 			this->period_us(us_period);
 		else
@@ -53,11 +58,11 @@ double StepOut::setFrequency(double frequency)
 	else
 	{
 		// frequency=0 effectively means stop
+		freq = 0;
 		if (status == STEPPING)
 		{
 			stop();
 		}
-		freq = 0;
 	}
 	return freq; // Return the accurate period
 }
@@ -78,7 +83,8 @@ int64_t StepOut::getCount()
 	else
 	{
 		// Fixed: use read_high_resolution_us() to prevent overflow every ~30min
-		return stepCount + (int64_t) (freq * tim.read_high_resolution_us() / 1.0E6); /*Calculate count at now*/
+		return stepCount
+				+ (int64_t) (freq * tim.read_high_resolution_us() / 1.0E6); /*Calculate count at now*/
 	}
 }
 
