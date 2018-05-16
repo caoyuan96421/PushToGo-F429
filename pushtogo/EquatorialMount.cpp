@@ -411,3 +411,34 @@ osStatus EquatorialMount::guide(guidedir_t dir, int ms)
 		return osErrorParameter;
 	}
 }
+
+void EquatorialMount::setSlewSpeed(double rate)
+{
+	mutex_execution.lock();
+	ra.setSlewSpeed(rate);
+	dec.setSlewSpeed(rate);
+	mutex_execution.unlock();
+}
+
+void EquatorialMount::setTrackSpeedSidereal(double rate)
+{
+	mutex_execution.lock();
+	ra.setTrackSpeedSidereal(rate);
+	mutex_execution.unlock();
+}
+
+void EquatorialMount::setGuideSpeedSidereal(double rate)
+{
+	mutex_execution.lock();
+	ra.setGuideSpeedSidereal(rate);
+	dec.setGuideSpeedSidereal(rate);
+	mutex_execution.unlock();
+}
+
+void EquatorialMount::setAcceleration(double acc)
+{
+	mutex_execution.lock();
+	ra.setAcceleration(acc);
+	dec.setAcceleration(acc);
+	mutex_execution.unlock();
+}

@@ -16,9 +16,9 @@
 class AdaptiveAxis: public Axis
 {
 public:
-	AdaptiveAxis(double stepsPerDeg, StepperMotor *stepper,
-			TelescopeConfiguration &config, const char *name = "Axis") :
-			Axis(stepsPerDeg, stepper, config, name)
+	AdaptiveAxis(double stepsPerDeg, StepperMotor *stepper, const char *name =
+			"Axis") :
+			Axis(stepsPerDeg, stepper, name)
 	{
 		idle_mode(); // Initialize as IDLE
 	}

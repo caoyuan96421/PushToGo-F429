@@ -8,6 +8,8 @@
 #ifndef PUSHTOGO_AXIS_H_
 #define PUSHTOGO_AXIS_H_
 
+class Axis;
+
 #include "StepperMotor.h"
 #include <math.h>
 #include "mbed.h"
@@ -50,33 +52,7 @@ public:
 	 * @param stepper Pointer to stepper driver to use
 	 * @param invert Whether the stepper direction should be inverted
 	 */
-	Axis(double stepsPerDeg, StepperMotor *stepper,
-			TelescopeConfiguration &config, const char *name = "Axis") :
-			stepsPerDeg(stepsPerDeg), stepper(stepper), axisName(name), config(
-					config), currentSpeed(0), currentDirection(
-					AXIS_ROTATE_POSITIVE), slewSpeed(
-					config.getDefaultSlewSpeed()), trackSpeed(
-					config.getDefaultTrackSpeedSidereal() * sidereal_speed), correctionSpeed(
-					config.getDefaultCorrectionSpeedSidereal()
-							* sidereal_speed), guideSpeed(
-					config.getDefaultGuideSpeedSidereal() * sidereal_speed), acceleration(
-					config.getDefaultAcceleration()), status(AXIS_STOPPED), slew_finish_sem(
-					0, 1)
-	{
-		if (stepsPerDeg <= 0)
-			error("Axis: steps per degree must be > 0");
-
-		if (!stepper)
-			error("Axis: stepper must be defined");
-
-		taskName = new char[strlen(name) + 10];
-		strcpy(taskName, name);
-		strcat(taskName, " task");
-		/*Start the task-handling thread*/
-		task_thread = new Thread(osPriorityRealtime,
-		OS_STACK_SIZE, NULL, taskName);
-		task_thread->start(callback(this, &Axis::task));
-	}
+	Axis(double stepsPerDeg, StepperMotor *stepper, const char *name = "Axis");
 
 	virtual ~Axis();
 
@@ -335,7 +311,6 @@ protected:
 	StepperMotor *stepper; ///Pointer to stepper motor
 	const char *axisName;
 	char *taskName;
-	TelescopeConfiguration &config;
 
 	/*Runtime values*/
 	volatile double currentSpeed; /// Current speed in deg/s

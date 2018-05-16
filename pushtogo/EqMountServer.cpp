@@ -10,10 +10,6 @@
 #include <ctype.h>
 
 #define EMS_DEBUG 0
-#define MAX_COMMAND 128
-
-#define ERR_WRONG_NUM_PARAM 1
-#define ERR_PARAM_OUT_OF_RANGE 2
 
 extern ServerCommand commandlist[MAX_COMMAND];
 
@@ -312,7 +308,7 @@ static int eqmount_speed(EqMountServer *server, int argn, char *argv[])
 			return ERR_PARAM_OUT_OF_RANGE;
 		}
 		if (speed <= 0
-				|| speed > TelescopeConfiguration::getInstance().getMaxSpeed())
+				|| speed > TelescopeConfiguration::getDouble("max_speed"))
 		{
 			return ERR_PARAM_OUT_OF_RANGE;
 		}
@@ -330,7 +326,7 @@ static int eqmount_speed(EqMountServer *server, int argn, char *argv[])
 		{
 			if (speed <= 0
 					|| speed
-							> TelescopeConfiguration::getInstance().getMaxSpeed())
+							> TelescopeConfiguration::getDouble("max_speed"))
 			{
 				return ERR_PARAM_OUT_OF_RANGE;
 			}
@@ -504,7 +500,7 @@ static int eqmount_track(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_readpos(EqMountServer *server, int argn, char *argv[])
+static int eqmount_read(EqMountServer *server, int argn, char *argv[])
 {
 
 	if (argn == 0)
@@ -567,7 +563,7 @@ static int eqmount_guide(EqMountServer *server, int argn, char *argv[])
 	char *tp;
 	int ms = strtod(argv[1], &tp);
 	if (tp == argv[1] || ms < 1
-			|| ms > TelescopeConfiguration::getInstance().getMaxGuideTime())
+			|| ms > TelescopeConfiguration::getInt("max_guide_time"))
 	{
 		return ERR_PARAM_OUT_OF_RANGE;
 	}
@@ -637,7 +633,7 @@ static int eqmount_time(EqMountServer *server, int argn, char *argv[])
 		}
 		else if (strcmp(argv[0], "zone") == 0)
 		{
-			t += (int) (TelescopeConfiguration::getInstance().getTimezone()
+			t += (int) (TelescopeConfiguration::getInt("timezone")
 					* 3600);
 			ctime_r(&t, buf);
 			stprintf(server->getStream(), "%s\r\n", buf);
@@ -723,8 +719,8 @@ ServerCommand commandlist[MAX_COMMAND] =
 				eqmount_nudge), 		/// Nudge
 		ServerCommand("track", "Start tracking in specified direction",
 				eqmount_track), 		/// Track
-		ServerCommand("readpos", "Read current RA/DEC position",
-				eqmount_readpos), /// Read Position
+		ServerCommand("read", "Read current RA/DEC position",
+				eqmount_read), /// Read Position
 		ServerCommand("guide", "Guide on specified direction", eqmount_guide), /// Guide
 		ServerCommand("speed", "Set slew and tracking speed", eqmount_speed), /// Set speed
 		ServerCommand("align", "Star alignment", eqmount_align), /// Alignment

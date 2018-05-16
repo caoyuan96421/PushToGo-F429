@@ -8,10 +8,11 @@
 #ifndef EQMOUNTSERVER_H_
 #define EQMOUNTSERVER_H_
 
+class EqMountServer;
+
 #include "MountServer.h"
 #include "EquatorialMount.h"
 
-class EqMountServer;
 
 struct ServerCommand
 {
@@ -24,6 +25,11 @@ struct ServerCommand
 	{
 	}
 };
+
+#define MAX_COMMAND 128
+
+#define ERR_WRONG_NUM_PARAM 1
+#define ERR_PARAM_OUT_OF_RANGE 2
 
 class EqMountServer: public MountServer
 {

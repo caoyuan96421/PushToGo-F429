@@ -13,6 +13,51 @@ static inline double min(double x, double y)
 {
 	return (x < y) ? x : y;
 }
+Axis::Axis(double stepsPerDeg, StepperMotor *stepper, const char *name) :
+		stepsPerDeg(stepsPerDeg), stepper(stepper), axisName(name), currentSpeed(
+				0), currentDirection(AXIS_ROTATE_POSITIVE), slewSpeed(
+				TelescopeConfiguration::getDouble("default_slew_speed")), trackSpeed(
+				TelescopeConfiguration::getDouble(
+						"default_track_speed_sidereal") * sidereal_speed), correctionSpeed(
+				TelescopeConfiguration::getDouble(
+						"default_correction_speed_sidereal") * sidereal_speed), guideSpeed(
+				TelescopeConfiguration::getDouble(
+						"default_guide_speed_sidereal") * sidereal_speed), acceleration(
+				TelescopeConfiguration::getDouble("default_acceleration")), status(
+				AXIS_STOPPED), slew_finish_sem(0, 1)
+{
+	if (stepsPerDeg <= 0)
+		error("Axis: steps per degree must be > 0");
+
+	if (!stepper)
+		error("Axis: stepper must be defined");
+
+	taskName = new char[strlen(name) + 10];
+	strcpy(taskName, name);
+	strcat(taskName, " task");
+	/*Start the task-handling thread*/
+	task_thread = new Thread(osPriorityRealtime,
+	OS_STACK_SIZE, NULL, taskName);
+	task_thread->start(callback(this, &Axis::task));
+}
+
+Axis::~Axis()
+{
+// Wait until the axis is stopped
+	if (status != AXIS_STOPPED)
+	{
+		stop();
+		while (status != AXIS_STOPPED)
+		{
+			Thread::wait(100);
+		}
+	}
+
+// Terminate the task thread to prevent illegal access to destroyed objects.
+	task_thread->terminate();
+	delete task_thread;
+	delete taskName;
+}
 
 void Axis::task()
 {
@@ -118,10 +163,11 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 	if (!indefinite)
 	{
 		// Ensure that delta is more than the minimum slewing angle, calculate the correct endSpeed and waitTime
-		if (delta > config.getMinSlewAngle())
+		if (delta > TelescopeConfiguration::getDouble("min_slew_angle"))
 		{
 			/*The motion angle is decreased to ensure the correction step is in the same direction*/
-			delta = delta - 0.5 * config.getMinSlewAngle();
+			delta = delta
+					- 0.5 * TelescopeConfiguration::getDouble("min_slew_angle");
 
 			double angleRotatedDuringAcceleration;
 
@@ -133,10 +179,9 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			endSpeed = min(sqrt(delta * acceleration),
 					stepper->setFrequency(stepsPerDeg * endSpeed)
 							/ stepsPerDeg);
-			ramp_steps =
-					(unsigned int) (endSpeed
-							/ (config.getAccelerationStepTime() / 1000.0)
-							/ acceleration);
+			ramp_steps = (unsigned int) (endSpeed
+					/ (TelescopeConfiguration::getInt("acceleration_step_time")
+							/ 1000.0) / acceleration);
 			if (ramp_steps < 1)
 				ramp_steps = 1;
 
@@ -147,7 +192,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 				double speed = stepper->setFrequency(
 						stepsPerDeg * endSpeed / ramp_steps * i) / stepsPerDeg;
 				angleRotatedDuringAcceleration += speed
-						* (config.getAccelerationStepTime() / 1000.0)
+						* (TelescopeConfiguration::getInt(
+								"acceleration_step_time") / 1000.0)
 						* (i == ramp_steps ? 1 : 2); // Count both acceleration and deceleration
 			}
 
@@ -179,7 +225,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		uint32_t flags;
 		/*Acceleration*/
 		ramp_steps = (unsigned int) (endSpeed
-				/ (config.getAccelerationStepTime() / 1000.0) / acceleration);
+				/ (TelescopeConfiguration::getInt("acceleration_step_time")
+						/ 1000.0) / acceleration);
 
 		if (ramp_steps < 1)
 			ramp_steps = 1;
@@ -198,7 +245,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			/*Monitor whether there is a stop/emerge stop signal*/
 			uint32_t flags = osThreadFlagsWait(
 			AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny,
-					config.getAccelerationStepTime());
+					TelescopeConfiguration::getInt("acceleration_step_time"));
 
 			if (flags == osFlagsErrorTimeout)
 			{
@@ -240,7 +287,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		/*Now deceleration*/
 		endSpeed = currentSpeed;
 		ramp_steps = (unsigned int) (currentSpeed
-				/ (config.getAccelerationStepTime() / 1000.0) / acceleration);
+				/ (TelescopeConfiguration::getInt("acceleration_step_time")
+						/ 1000.0) / acceleration);
 
 		if (ramp_steps < 1)
 			ramp_steps = 1;
@@ -254,7 +302,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 					stepsPerDeg * endSpeed / ramp_steps * i) / stepsPerDeg; // set and update accurate speed
 			// Wait. Now we only handle EMERGENCY STOP signal, since stop has been handled already
 			flags = osThreadFlagsWait(AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny,
-					config.getAccelerationStepTime());
+					TelescopeConfiguration::getInt("acceleration_step_time"));
 
 			if (flags != osFlagsErrorTimeout)
 			{
@@ -281,7 +329,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 				angleDeg, dest); // TODO: DEBUG
 
 		double diff = remainder(angleDeg - dest, 360.0);
-		if (diff > config.getMaxCorrectionAngle())
+		if (diff > TelescopeConfiguration::getDouble("max_correction_angle"))
 		{
 			debug(
 					"%s: correction too large: %f. Check hardware configuration.\n",
@@ -291,7 +339,10 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		}
 
 		int nTry = 3; // Try 3 corrections at most
-		while (--nTry && fabsf(diff) > config.getCorrectionTolerance())
+		while (--nTry
+				&& fabsf(diff)
+						> TelescopeConfiguration::getDouble(
+								"correction_tolerance"))
 		{
 			/*Determine correction direction and time*/
 			sd = (diff > 0.0) ? STEP_BACKWARD : STEP_FORWARD;
@@ -305,7 +356,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			debug_if(AXIS_DEBUG,
 					"%s: correction: from %f to %f deg. time=%d ms\n", axisName,
 					angleDeg, dest, correctionTime_ms); //TODO: DEBUG
-			if (correctionTime_ms < config.getMinCorrectionTime())
+			if (correctionTime_ms
+					< TelescopeConfiguration::getInt("min_correction_time"))
 			{
 				break;
 			}
@@ -406,11 +458,14 @@ void Axis::track(axisrotdir_t dir)
 
 						// Clamp to maximum guide time
 						guideTime_ms = abs(guideTime_ms);
-						if (guideTime_ms > config.getMaxGuideTime())
+						if (guideTime_ms
+								> TelescopeConfiguration::getInt(
+										"max_guide_time"))
 						{
 							debug("Axis: Guiding time too long: %d ms\n",
 									abs(guideTime_ms));
-							guideTime_ms = config.getMaxGuideTime();
+							guideTime_ms = TelescopeConfiguration::getInt(
+									"max_guide_time");
 						}
 
 						bool dirswitch = false;
@@ -495,20 +550,3 @@ void Axis::track(axisrotdir_t dir)
 	idle_mode();
 }
 
-Axis::~Axis()
-{
-// Wait until the axis is stopped
-	if (status != AXIS_STOPPED)
-	{
-		stop();
-		while (status != AXIS_STOPPED)
-		{
-			Thread::wait(100);
-		}
-	}
-
-// Terminate the task thread to prevent illegal access to destroyed objects.
-	task_thread->terminate();
-	delete task_thread;
-	delete taskName;
-}

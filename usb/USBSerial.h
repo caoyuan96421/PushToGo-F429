@@ -14,6 +14,8 @@
 #include "usbd_cdc.h"
 #include "IOQueue.h"
 
+#define USBSERIAL_QUEUE_SIZE (2 * CDC_DATA_FS_MAX_PACKET_SIZE)
+
 class USBSerial: public mbed::FileHandle
 {
 private:
@@ -25,11 +27,11 @@ private:
 	static int8_t CDC_Received(uint8_t* pbuf, uint32_t *Len);
 	static int8_t CDC_Transmitted(uint8_t* pbuf, uint32_t *Len);
 
-	static void onotify(OutputQueue<char, 2 * CDC_DATA_FS_MAX_PACKET_SIZE> *);
-	static void inotify(InputQueue<char, 2 * CDC_DATA_FS_MAX_PACKET_SIZE> *);
+	static void onotify(OutputQueue<char, USBSERIAL_QUEUE_SIZE> *);
+	static void inotify(InputQueue<char, USBSERIAL_QUEUE_SIZE> *);
 
-	static InputQueue<char, 2 * CDC_DATA_FS_MAX_PACKET_SIZE> rxq;
-	static OutputQueue<char, 2 * CDC_DATA_FS_MAX_PACKET_SIZE> txq;
+	static InputQueue<char, USBSERIAL_QUEUE_SIZE> rxq;
+	static OutputQueue<char, USBSERIAL_QUEUE_SIZE> txq;
 
 	USBSerial()
 	{

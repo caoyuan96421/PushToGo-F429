@@ -1,6 +1,8 @@
 #ifndef EQUATORIALMOUNT_H_
 #define EQUATORIALMOUNT_H_
 
+class EquatorialMount;
+
 #include "Axis.h"
 #include "Mount.h"
 #include "UTCClock.h"
@@ -236,48 +238,25 @@ public:
 	 * Set slew rate of both axis
 	 * @param rate new speed
 	 */
-	void setSlewSpeed(double rate)
-	{
-		mutex_execution.lock();
-		ra.setSlewSpeed(rate);
-		dec.setSlewSpeed(rate);
-		mutex_execution.unlock();
-	}
+	void setSlewSpeed(double rate);
 
 	/**
 	 * Set tracking speed of RA axis
 	 * @param rate new speed in sidereal rate
 	 */
-	void setTrackSpeedSidereal(double rate)
-	{
-		mutex_execution.lock();
-		ra.setTrackSpeedSidereal(rate);
-		mutex_execution.unlock();
-	}
+	void setTrackSpeedSidereal(double rate);
 
 	/**
 	 * Set guiding speed of RA axis
 	 * @param rate new speed in sidereal rate
 	 */
-	void setGuideSpeedSidereal(double rate)
-	{
-		mutex_execution.lock();
-		ra.setGuideSpeedSidereal(rate);
-		dec.setGuideSpeedSidereal(rate);
-		mutex_execution.unlock();
-	}
+	void setGuideSpeedSidereal(double rate);
 
 	/**
 	 * Set slew rate of both axis
 	 * @param rate new speed
 	 */
-	void setAcceleration(double acc)
-	{
-		mutex_execution.lock();
-		ra.setAcceleration(acc);
-		dec.setAcceleration(acc);
-		mutex_execution.unlock();
-	}
+	void setAcceleration(double acc);
 
 	/**
 	 * Print current position to STDOUT. Should call updatePosition to update the current position

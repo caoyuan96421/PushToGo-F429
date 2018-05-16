@@ -38,6 +38,7 @@ SDBlockDevice sd(PA_7, PB_4, PA_5, PC_13);
 FATFileSystem fs("sdcard");
 
 const char *config_file_path = "/sdcard/telescope.cfg";
+const char *config_saved_file_path = "/sdcard/telescope_saved.cfg";
 AdaptiveAxis *ra_axis = NULL;
 AdaptiveAxis *dec_axis = NULL;
 EquatorialMount *eq_mount = NULL;
@@ -46,8 +47,6 @@ static void add_sys_commands();
 
 EquatorialMount &telescopeHardwareInit()
 {
-	TelescopeConfiguration &telescope_config =
-			TelescopeConfiguration::getInstance();
 	// Read configuration
 	printf("Mounting SD card...\n");
 	if (fs.mount(&sd) != 0)
@@ -57,17 +56,24 @@ EquatorialMount &telescopeHardwareInit()
 	}
 	else
 	{
-		FILE *fp = fopen(config_file_path, "r");
+		// First check saved file
+		const char *file = config_saved_file_path;
+		FILE *fp = fopen(file, "r");
 		if (fp == NULL)
 		{
-			debug(
-					"Error: config file not accessible: %s. Falling back to default configuration\n",
-					config_file_path);
+			// Then check original file
+			file = config_file_path;
+			fp = fopen(file, "r");
+			if (fp == NULL)
+			{
+				debug("Error: config file not found.\n", config_file_path);
+			}
 		}
-		else
+
+		if (fp)
 		{
-			printf("Reading configuration file %s\n", config_file_path);
-			telescope_config = TelescopeConfiguration::readFromFile(fp);
+			printf("Reading configuration file %s\n", file);
+			TelescopeConfiguration::readFromFile(fp);
 			fclose(fp);
 		}
 	}
@@ -93,16 +99,20 @@ EquatorialMount &telescopeHardwareInit()
 	{
 		delete dec_stepper;
 	}
+
+	double stepsPerDeg = TelescopeConfiguration::getDouble("motor_steps")
+			* TelescopeConfiguration::getDouble("gear_reduction")
+			* TelescopeConfiguration::getDouble("worm_teeth") / 360.0;
+
 	ra_stepper = new AMIS30543StepperDriver(&ra_spi, PE_3, PB_7, NC, NC,
-			telescope_config.isRAInvert());
+			TelescopeConfiguration::getBool("ra_invert"));
 	dec_stepper = new AMIS30543StepperDriver(&dec_spi, PE_4, PC_8, NC, NC,
-			telescope_config.isDECInvert());
-	ra_axis = new AdaptiveAxis(telescope_config.getStepsPerDeg(), ra_stepper,
-			telescope_config, "RA_Axis");
-	dec_axis = new AdaptiveAxis(telescope_config.getStepsPerDeg(), dec_stepper,
-			telescope_config, "DEC_Axis");
+			TelescopeConfiguration::getBool("dec_invert"));
+	ra_axis = new AdaptiveAxis(stepsPerDeg, ra_stepper, "RA_Axis");
+	dec_axis = new AdaptiveAxis(stepsPerDeg, dec_stepper, "DEC_Axis");
 	eq_mount = new EquatorialMount(*ra_axis, *dec_axis, clk,
-			telescope_config.getLocation());
+			LocationCoordinates(TelescopeConfiguration::getDouble("latitude"),
+					TelescopeConfiguration::getDouble("longitude")));
 
 	printf("Telescope initialized\n");
 
@@ -110,11 +120,13 @@ EquatorialMount &telescopeHardwareInit()
 }
 
 /* Serial connection */
-UARTSerial serial(USBTX, USBRX, 115200);
+UARTSerial *console;
 EqMountServer *server_serial;
 
-bool serverInitialized = false;
+/* USB connection */
+EqMountServer *server_usb;
 
+bool serverInitialized = false;
 
 osStatus telescopeServerInit()
 {
@@ -127,16 +139,19 @@ osStatus telescopeServerInit()
 		add_sys_commands();
 	}
 
-	if (!server_serial)
+	if (!console)
 	{
-		//server_serial = new EqMountServer(serial, true);
-		server_serial = new EqMountServer(USBSerial::getInstance(), true);
+		console = new UARTSerial(USBTX, USBRX,
+				TelescopeConfiguration::getInt("serial_baud"));
+		server_serial = new EqMountServer(*console, false);
 	}
 	server_serial->bind(*eq_mount);
 
-	const char *str = "Server initialized.\n";
-	printf(str);
-//	stprintf(usb, str);
+	if (!server_usb)
+	{
+		server_usb = new EqMountServer(USBSerial::getInstance(), true);
+	}
+	server_usb->bind(*eq_mount);
 
 	return osOK;
 }
@@ -214,6 +229,34 @@ static int eqmount_reboot(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
+static int eqmount_save(EqMountServer *server, int argn, char *argv[])
+{
+	if (argn == 0)
+	{
+		FILE *fp = fopen(config_saved_file_path, "w");
+		if (fp)
+		{
+			TelescopeConfiguration::writeToFile(fp);
+			fclose(fp);
+		}
+		else
+		{
+			debug("Failed to write to file %s\n", config_saved_file_path);
+			return -1;
+		}
+	}
+	else if (argn == 1 && strcmp(argv[0], "delete") == 0)
+	{
+		// Delete save file
+		if (remove(config_saved_file_path) != 0)
+		{
+			debug("Failed to delete file %s\n", config_saved_file_path);
+			return -1;
+		}
+	}
+	return 0;
+}
+
 static void add_sys_commands()
 {
 	EqMountServer::addCommand(
@@ -222,4 +265,6 @@ static void add_sys_commands()
 			ServerCommand("systime", "Print system time", eqmount_systime));
 	EqMountServer::addCommand(
 			ServerCommand("reboot", "Reboot the system", eqmount_reboot));
+	EqMountServer::addCommand(
+			ServerCommand("save", "Save configuration file", eqmount_save));
 }

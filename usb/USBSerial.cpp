@@ -6,13 +6,14 @@
  */
 
 #include "USBSerial.h"
+#include "usbd_def.h"
 
-InputQueue<char, 2 * CDC_DATA_FS_MAX_PACKET_SIZE> USBSerial::rxq;
-OutputQueue<char, 2 * CDC_DATA_FS_MAX_PACKET_SIZE> USBSerial::txq;
+InputQueue<char, USBSERIAL_QUEUE_SIZE> USBSerial::rxq;
+OutputQueue<char, USBSERIAL_QUEUE_SIZE> USBSerial::txq;
 USBD_HandleTypeDef USBSerial::hUSBDDevice;
 
-static unsigned char rxbuf[CDC_DATA_FS_MAX_PACKET_SIZE];
-static unsigned char txbuf[CDC_DATA_FS_MAX_PACKET_SIZE];
+static unsigned char rxbuf[USBSERIAL_QUEUE_SIZE];
+static unsigned char txbuf[USBSERIAL_QUEUE_SIZE];
 
 USBSerial USBSerial::instance;
 
@@ -98,27 +99,29 @@ int8_t USBSerial::CDC_Control(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 	return (0);
 }
 
-void USBSerial::onotify(OutputQueue<char, 2 * CDC_DATA_FS_MAX_PACKET_SIZE>* txq)
+void USBSerial::onotify(OutputQueue<char, USBSERIAL_QUEUE_SIZE>* txq)
 {
 	// Data available in output queue
 	core_util_critical_section_enter();
 	USBD_CDC_HandleTypeDef *hcdc =
 			(USBD_CDC_HandleTypeDef*) hUSBDDevice.pClassData;
 	unsigned int len = txq->count();
+
 	if (hcdc->TxState == 0 && len > 0)
 	{
 		// No ongoing transmission
-		for (unsigned int i = 0; i < len; i++)
+		unsigned int i;
+		for (i = 0; i < len; i++)
 		{
-			txq->get((char*)&txbuf[i]);
+			txq->get((char*) &txbuf[i]);
 		}
-		USBD_CDC_SetTxBuffer(&hUSBDDevice, txbuf, len);
+		USBD_CDC_SetTxBuffer(&hUSBDDevice, txbuf, i);
 		USBD_CDC_TransmitPacket(&hUSBDDevice);
 	}
 	core_util_critical_section_exit();
 }
 
-void USBSerial::inotify(InputQueue<char, 2 * CDC_DATA_FS_MAX_PACKET_SIZE>* rxq)
+void USBSerial::inotify(InputQueue<char, USBSERIAL_QUEUE_SIZE>* rxq)
 {
 	// Space available in queue
 	core_util_critical_section_enter();
