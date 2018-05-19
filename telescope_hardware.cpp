@@ -156,7 +156,8 @@ osStatus telescopeServerInit()
 	return osOK;
 }
 
-static int eqmount_sys(EqMountServer *server, int argn, char *argv[])
+static int eqmount_sys(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	const int THD_MAX = 32;
 	osThreadId thdlist[THD_MAX];
@@ -213,7 +214,8 @@ static int eqmount_sys(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_systime(EqMountServer *server, int argn, char *argv[])
+static int eqmount_systime(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	char buf[32];
 	time_t t = time(NULL);
@@ -223,13 +225,15 @@ static int eqmount_systime(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_reboot(EqMountServer *server, int argn, char *argv[])
+static int eqmount_reboot(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	NVIC_SystemReset();
 	return 0;
 }
 
-static int eqmount_save(EqMountServer *server, int argn, char *argv[])
+static int eqmount_save(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	if (argn == 0)
 	{

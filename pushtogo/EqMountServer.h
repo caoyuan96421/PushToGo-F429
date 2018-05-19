@@ -13,14 +13,13 @@ class EqMountServer;
 #include "MountServer.h"
 #include "EquatorialMount.h"
 
-
 struct ServerCommand
 {
 	const char *cmd; /// Name of the command
 	const char *desc; /// Description of the command
-	int (*fptr)(EqMountServer *, int, char **); /// Function pointer to the command
+	int (*fptr)(EqMountServer *, const char *, int, char **); /// Function pointer to the command
 	ServerCommand(const char *n = "", const char *d = "",
-			int (*fp)(EqMountServer *, int, char **) = NULL) :
+			int (*fp)(EqMountServer *, const char *, int, char **) = NULL) :
 			cmd(n), desc(d), fptr(fp)
 	{
 	}
@@ -42,7 +41,7 @@ protected:
 
 	void task_thread();
 
-	void command_execute(ServerCommand &, int argn, char *argv[]);
+	void command_execute(ServerCommand &, int argn, char *argv[], char *buffer);
 
 public:
 	EqMountServer(FileHandle &stream, bool echo = false);

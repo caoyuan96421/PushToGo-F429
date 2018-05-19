@@ -38,7 +38,6 @@ EqMountServer::~EqMountServer()
 
 void EqMountServer::task_thread()
 {
-	char buffer[256]; // text buffer
 	commandRunning = false;
 	EventQueue queue(4 * EVENTS_EVENT_SIZE);
 	Thread evq_thd(osThreadGetPriority(Thread::gettid()), OS_STACK_SIZE, NULL,
@@ -47,10 +46,17 @@ void EqMountServer::task_thread()
 
 	while (true)
 	{
+		const int size = 256;
+		char *buffer = new char[size]; // text buffer
+		if (!buffer)
+		{
+			stprintf(stream, "Error: out of memory\r\n");
+			break;
+		}
 		bool eof = false;
 		char x = 0;
 		int i = 0;
-		while (!eof && i < (int) sizeof(buffer) - 10)
+		while (!eof && i < size - 2)
 		{
 			int s = stream.read(&x, 1);
 			if (s <= 0)
@@ -66,8 +72,7 @@ void EqMountServer::task_thread()
 			{ // Backspace
 				if (i > 0)
 				{
-					const char str[] = "\b \b";
-					stream.write(str, sizeof(str)); // blank the current character properly
+					stprintf(stream, "\b \b"); // blank the current character properly
 					i--;
 				}
 				continue;
@@ -88,22 +93,26 @@ void EqMountServer::task_thread()
 			buffer[i++] = (char) x;
 		}
 		if (eof && i == 0)
+		{
+			delete[] buffer;
 			break;
+		}
 		if (echo)
 		{
 			// Echo new line character after command
-			x = '\r';
-			stream.write(&x, 1);
-			x = '\n';
-			stream.write(&x, 1);
+			stprintf(stream, "\r\n");
 		}
-		if (i == 0) // Empty command
+		if (i == 0)
+		{ // Empty command
+			delete[] buffer;
 			continue;
+		}
 		buffer[i] = '\0'; // insert null character
 
 		if (eq_mount == NULL)
 		{
 			stprintf(stream, "Error: EqMount not binded.\r\n");
+			delete[] buffer;
 			continue;
 		}
 
@@ -112,13 +121,16 @@ void EqMountServer::task_thread()
 
 		char * command = strtok_r(buffer, delim, &saveptr); // Get the first token
 
-		if (strlen(command) == 0) // Empty command
+		if (strlen(command) == 0)
+		{ // Empty command
+			delete[] buffer;
 			continue;
+		}
 
 		for (char *p = command; *p; ++p)
 			*p = tolower(*p); // Convert to lowercase
 
-		char *args[16];
+		char **args = new char*[16];
 
 		// Extract parameters
 		i = 0;
@@ -154,30 +166,39 @@ void EqMountServer::task_thread()
 		if (cind == -1)
 		{
 			debug_if(EMS_DEBUG, "Error: command %s not found.\n", command);
+			delete[] buffer;
+			delete[] args;
 			continue;
 		}
 
 		if (commandRunning)
 		{
-			// Already running, only accepts stop/emergStop
-			if (cind < 2)
-				commandlist[cind].fptr(this, 0, NULL);
-			else
-				continue;
+			// Already running, only accepts stop/estop/read/time
+			if (cind < 4)
+			{
+				int ret = commandlist[cind].fptr(this, command, argn, args);
+				// Send the return status back
+				stprintf(stream, "%d %s\r\n", ret, command);
+			}
+			delete[] buffer;
+			delete[] args;
+			continue;
 		}
 
 		commandRunning = true;
-		Callback<void(ServerCommand&, int, char**)> cb = callback(this,
+		Callback<void(ServerCommand&, int, char**, char*)> cb = callback(this,
 				&EqMountServer::command_execute);
-		queue.call(cb, commandlist[cind], argn, args); // Use the event dispatching thread to run this
+		queue.call(cb, commandlist[cind], argn, args, buffer); // Use the event dispatching thread to run this
 
+		// The buffer and argument list will be deleted when the command finishes execution in the event dispatch thread
 	}
 	// If we reach here, it must be end of file
 }
 
-void EqMountServer::command_execute(ServerCommand &cmd, int argn, char *argv[])
+void EqMountServer::command_execute(ServerCommand &cmd, int argn, char *args[],
+		char *buffer)
 {
-	int ret = cmd.fptr(this, argn, argv);
+	int ret = cmd.fptr(this, cmd.cmd, argn, args);
 
 	if (ret == ERR_WRONG_NUM_PARAM)
 	{
@@ -195,12 +216,15 @@ void EqMountServer::command_execute(ServerCommand &cmd, int argn, char *argv[])
 	}
 
 	// Send the return status back
-	stprintf(stream, "%s %d\r\n", cmd.cmd, ret);
+	stprintf(stream, "%d %s\r\n", ret, cmd.cmd);
 
 	commandRunning = false;
+	delete[] buffer;
+	delete args;
 }
 
-static int eqmount_stop(EqMountServer *server, int argn, char *argv[])
+static int eqmount_stop(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	if (argn != 0)
 	{
@@ -210,13 +234,15 @@ static int eqmount_stop(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_estop(EqMountServer *server, int argn, char *argv[])
+static int eqmount_estop(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	server->getEqMount()->emergencyStop();
 	return 0;
 }
 
-static int eqmount_goto(EqMountServer *server, int argn, char *argv[])
+static int eqmount_goto(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	if (argn == 1)
 	{
@@ -297,7 +323,8 @@ static int eqmount_goto(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_speed(EqMountServer *server, int argn, char *argv[])
+static int eqmount_speed(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	char *tp;
 	if (argn == 1)
@@ -325,8 +352,7 @@ static int eqmount_speed(EqMountServer *server, int argn, char *argv[])
 		if (strcmp(argv[0], "slew") == 0)
 		{
 			if (speed <= 0
-					|| speed
-							> TelescopeConfiguration::getDouble("max_speed"))
+					|| speed > TelescopeConfiguration::getDouble("max_speed"))
 			{
 				return ERR_PARAM_OUT_OF_RANGE;
 			}
@@ -357,12 +383,14 @@ static int eqmount_speed(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_align(EqMountServer *server, int argn, char *argv[])
+static int eqmount_align(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	if (argn == 0)
 	{
 		stprintf(server->getStream(),
-				"Usage: align add [star]\nalign del [n]\nalign show\nalign show [n]\nalign replace [n] [star]\nalign clear\n");
+				"%s usage: align add [star]\nalign del [n]\nalign show\nalign show [n]\nalign replace [n] [star]\nalign clear\n",
+				cmd);
 		return ERR_WRONG_NUM_PARAM;
 	}
 	if (strcmp(argv[0], "add") == 0)
@@ -370,7 +398,7 @@ static int eqmount_align(EqMountServer *server, int argn, char *argv[])
 		if (argn != 3)
 		{
 			stprintf(server->getStream(),
-					"Usage: align add {ref_ra} {ref_dec}\n");
+					"%s usage: align add {ref_ra} {ref_dec}\n", cmd);
 			return ERR_WRONG_NUM_PARAM;
 		}
 		char *tp;
@@ -398,7 +426,7 @@ static int eqmount_align(EqMountServer *server, int argn, char *argv[])
 			int N = server->getEqMount()->getNumAlignmentStar();
 			if (N == 0)
 			{
-				stprintf(server->getStream(), "No alignment star\n");
+				stprintf(server->getStream(), "%s no alignment star\n", cmd);
 			}
 			else
 			{
@@ -407,18 +435,19 @@ static int eqmount_align(EqMountServer *server, int argn, char *argv[])
 					AlignmentStar *as = server->getEqMount()->getAlignmentStar(
 							i);
 					stprintf(server->getStream(),
-							"Star %d\n  REF: RA=%7.2f, DEC=%7.2f\n MEAS: RA=%7.2f, DEC=%7.2f %c\n",
-							i + 1, as->star_ref.ra, as->star_ref.dec,
+							"%s star %d\n  REF: RA=%.8f, DEC=%.8f MEAS: RA=%.8f, DEC=%.8f %c\n",
+							cmd, i + 1, as->star_ref.ra, as->star_ref.dec,
 							as->star_meas.ra_delta, as->star_meas.dec_delta,
 							(as->star_meas.side == PIER_SIDE_WEST) ? 'W' : 'E');
 				}
-				stprintf(server->getStream(), "Offset: RA=%7.2f, DEC=%7.2f\n",
+				stprintf(server->getStream(), "%s offset: RA=%.8f, DEC=%.8f\n",
+						cmd,
 						server->getEqMount()->getCalibration().offset.ra_off,
 						server->getEqMount()->getCalibration().offset.dec_off);
-				stprintf(server->getStream(), "Polar: ALT=%7.2f, AZ=%7.2f\n",
-						server->getEqMount()->getCalibration().pa.alt,
+				stprintf(server->getStream(), "%s polar: ALT=%.8f, AZ=%.8f\n",
+						cmd, server->getEqMount()->getCalibration().pa.alt,
 						server->getEqMount()->getCalibration().pa.azi);
-				stprintf(server->getStream(), "Polar: cone=%6.3f\n",
+				stprintf(server->getStream(), "%s cone: %.8f\n", cmd,
 						server->getEqMount()->getCalibration().cone);
 			}
 		}
@@ -431,9 +460,9 @@ static int eqmount_align(EqMountServer *server, int argn, char *argv[])
 				return ERR_PARAM_OUT_OF_RANGE;
 			}
 			stprintf(server->getStream(),
-					"REF: RA=%7.2f, DEC=%7.2f\n MEAS: RA=%7.2f, DEC=%7.2f %c\n",
-					as->star_ref.ra, as->star_ref.dec, as->star_meas.ra_delta,
-					as->star_meas.dec_delta,
+					"%s REF: RA=%.8f, DEC=%.8f MEAS: RA=%.8f, DEC=%.8f %c\n",
+					cmd, as->star_ref.ra, as->star_ref.dec,
+					as->star_meas.ra_delta, as->star_meas.dec_delta,
 					(as->star_meas.side == PIER_SIDE_WEST) ? 'W' : 'E');
 		}
 		else
@@ -452,7 +481,8 @@ static int eqmount_align(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_nudge(EqMountServer *server, int argn, char *argv[])
+static int eqmount_nudge(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	if (argn != 1 && argn != 2)
 	{
@@ -488,7 +518,8 @@ static int eqmount_nudge(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_track(EqMountServer *server, int argn, char *argv[])
+static int eqmount_track(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	if (argn != 0)
 	{
@@ -500,14 +531,15 @@ static int eqmount_track(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_read(EqMountServer *server, int argn, char *argv[])
+static int eqmount_read(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 
 	if (argn == 0)
 	{
 		EquatorialCoordinates eq =
 				server->getEqMount()->getEquatorialCoordinates();
-		stprintf(server->getStream(), "%8.3f %8.3f\r\n", eq.ra, eq.dec);
+		stprintf(server->getStream(), "%s %.8f %.8f\r\n", cmd, eq.ra, eq.dec);
 	}
 	else if (argn == 1)
 	{
@@ -515,13 +547,15 @@ static int eqmount_read(EqMountServer *server, int argn, char *argv[])
 		{
 			EquatorialCoordinates eq =
 					server->getEqMount()->getEquatorialCoordinates();
-			stprintf(server->getStream(), "%8.3f %8.3f\r\n", eq.ra, eq.dec);
+			stprintf(server->getStream(), "%s %.8f %.8f\r\n", cmd, eq.ra,
+					eq.dec);
 		}
 		else if (strcmp(argv[0], "mount") == 0)
 		{
 			MountCoordinates mc = server->getEqMount()->getMountCoordinates();
-			stprintf(server->getStream(), "%8.3f %8.3f %c\r\n", mc.ra_delta,
-					mc.dec_delta, (mc.side == PIER_SIDE_WEST) ? 'W' : 'E');
+			stprintf(server->getStream(), "%s %.8f %.8f %c\r\n", cmd,
+					mc.ra_delta, mc.dec_delta,
+					(mc.side == PIER_SIDE_WEST) ? 'W' : 'E');
 		}
 		else
 		{
@@ -536,27 +570,29 @@ static int eqmount_read(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_help(EqMountServer *server, int argn, char *argv[])
+static int eqmount_help(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
-	const char *str = "Available commands: \r\n";
-	server->getStream().write(str, strlen(str));
+	stprintf(server->getStream(), "%s Available commands: \r\n", cmd);
 	for (int i = 0; i < MAX_COMMAND; i++)
 	{
 		if (commandlist[i].fptr == NULL)
 			break;
-		stprintf(server->getStream(), "- %s : %s\r\n", commandlist[i].cmd,
-				commandlist[i].desc);
+		stprintf(server->getStream(), "%s - %s : %s\r\n", cmd,
+				commandlist[i].cmd, commandlist[i].desc);
 	}
 	return 0;
 }
 
-static int eqmount_guide(EqMountServer *server, int argn, char *argv[])
+static int eqmount_guide(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 
 	if (argn != 2)
 	{
 		stprintf(server->getStream(),
-				"Usage: guide {north|west|south|east} milliseconds\r\n");
+				"%s Usage: guide {north|west|south|east} milliseconds\r\n",
+				cmd);
 		return ERR_WRONG_NUM_PARAM;
 	}
 
@@ -592,7 +628,8 @@ static int eqmount_guide(EqMountServer *server, int argn, char *argv[])
 	return 0;
 }
 
-static int eqmount_time(EqMountServer *server, int argn, char *argv[])
+static int eqmount_time(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	char buf[32];
 	//Get time
@@ -607,7 +644,7 @@ static int eqmount_time(EqMountServer *server, int argn, char *argv[])
 		if (strcmp(argv[0], "stamp") == 0)
 		{
 			// Print timestamp value
-			stprintf(server->getStream(), "%d\r\n", t);
+			stprintf(server->getStream(), "%s %d\r\n", cmd, t);
 			return 0;
 		}
 		else if (strcmp(argv[0], "sidereal") == 0)
@@ -616,11 +653,11 @@ static int eqmount_time(EqMountServer *server, int argn, char *argv[])
 			// 0.0 is sidereal midnight, 180/-180 is sidereal noon
 			double st = CelestialMath::getLocalSiderealTime(t,
 					server->getEqMount()->getLocation());
-			int hh = ((int) floor(st / 15) + 24) % 24;
-			int mm = (int) floor((st + 360.0 - hh * 15) * 4) % 60;
-			int ss = (int) floor((st + 360.0 - hh * 15 - mm * 0.25) * 240) % 60;
-			stprintf(server->getStream(), "%f\r\n", st);
-			stprintf(server->getStream(), "%d:%d:%d LST\r\n", hh, mm, ss);
+//			int hh = ((int) floor(st / 15) + 24) % 24;
+//			int mm = (int) floor((st + 360.0 - hh * 15) * 4) % 60;
+//			int ss = (int) floor((st + 360.0 - hh * 15 - mm * 0.25) * 240) % 60;
+			stprintf(server->getStream(), "%s %f\r\n", cmd, st);
+//			stprintf(server->getStream(), "%d:%d:%d LST\r\n", hh, mm, ss);
 			return 0;
 		}
 		else if (strcmp(argv[0], "local") == 0)
@@ -628,15 +665,14 @@ static int eqmount_time(EqMountServer *server, int argn, char *argv[])
 			t += (int) (remainder(server->getEqMount()->getLocation().lon, 360)
 					* 240);
 			ctime_r(&t, buf);
-			stprintf(server->getStream(), "%s\r\n", buf);
+			stprintf(server->getStream(), "%s %s\r\n", cmd, buf);
 			return 0;
 		}
 		else if (strcmp(argv[0], "zone") == 0)
 		{
-			t += (int) (TelescopeConfiguration::getInt("timezone")
-					* 3600);
+			t += (int) (TelescopeConfiguration::getInt("timezone") * 3600);
 			ctime_r(&t, buf);
-			stprintf(server->getStream(), "%s\r\n", buf);
+			stprintf(server->getStream(), "%s %s\r\n", cmd, buf);
 			return 0;
 		}
 
@@ -644,12 +680,13 @@ static int eqmount_time(EqMountServer *server, int argn, char *argv[])
 
 	// Print of formatted string of current time
 	ctime_r(&t, buf);
-	stprintf(server->getStream(), "%s\r\n", buf);
+	stprintf(server->getStream(), "%s %s\r\n", cmd, buf);
 
 	return 0;
 }
 
-static int eqmount_settime(EqMountServer *server, int argn, char *argv[])
+static int eqmount_settime(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
 {
 	if (argn == 1)
 	{
@@ -686,7 +723,8 @@ static int eqmount_settime(EqMountServer *server, int argn, char *argv[])
 	else
 	{
 		stprintf(server->getStream(),
-				"Usage: settime <timestamp>, or, settime <year> <month> <day> <hour> <minute> <second> (UTC time should be used)\r\n");
+				"%s usage: settime <timestamp>, or, settime <year> <month> <day> <hour> <minute> <second> (UTC time should be used)\r\n",
+				cmd);
 		return 1;
 	}
 
@@ -712,20 +750,23 @@ ServerCommand commandlist[MAX_COMMAND] =
 { /// List of all commands
 		ServerCommand("stop", "Stop mount motion", eqmount_stop), 		/// Stop
 		ServerCommand("estop", "Emergency stop", eqmount_estop), /// Emergency Stop
-		ServerCommand("goto",
-				"Perform go to operation to specified ra, dec coordinates",
-				eqmount_goto), 		/// Go to
-		ServerCommand("nudge", "Perform nudging on specified direction",
-				eqmount_nudge), 		/// Nudge
-		ServerCommand("track", "Start tracking in specified direction",
-				eqmount_track), 		/// Track
-		ServerCommand("read", "Read current RA/DEC position",
-				eqmount_read), /// Read Position
-		ServerCommand("guide", "Guide on specified direction", eqmount_guide), /// Guide
-		ServerCommand("speed", "Set slew and tracking speed", eqmount_speed), /// Set speed
-		ServerCommand("align", "Star alignment", eqmount_align), /// Alignment
-		ServerCommand("help", "Print this help menu", eqmount_help), /// Help menu
+		ServerCommand("read", "Read current RA/DEC position", eqmount_read), /// Read Position
 		ServerCommand("time", "Get and set system time", eqmount_time), /// System time
-		ServerCommand("settime", "Set system time", eqmount_settime), /// System time
-		ServerCommand("", "", NULL) };
+		/// Above are allowed commands when another command is running
+
+				ServerCommand("goto",
+						"Perform go to operation to specified ra, dec coordinates",
+						eqmount_goto), 		/// Go to
+				ServerCommand("nudge", "Perform nudging on specified direction",
+						eqmount_nudge), 		/// Nudge
+				ServerCommand("track", "Start tracking in specified direction",
+						eqmount_track), 		/// Track
+				ServerCommand("guide", "Guide on specified direction",
+						eqmount_guide), /// Guide
+				ServerCommand("speed", "Set slew and tracking speed",
+						eqmount_speed), /// Set speed
+				ServerCommand("align", "Star alignment", eqmount_align), /// Alignment
+				ServerCommand("help", "Print this help menu", eqmount_help), /// Help menu
+				ServerCommand("settime", "Set system time", eqmount_settime), /// System time
+				ServerCommand("", "", NULL) };
 

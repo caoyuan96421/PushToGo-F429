@@ -133,7 +133,7 @@ public:
 	 */
 	int capacity() const
 	{
-		return N - (tail - head + N) % N;
+		return N - (tail - head + N) % N - 1;
 	}
 	/** Check if the queue is full
 	 *
@@ -282,7 +282,7 @@ public:
 	 */
 	int capacity() const
 	{
-		return N - (tail - head + N) % N;
+		return N - (tail - head + N) % N - 1;
 	}
 	/** Check if the queue is full
 	 *

@@ -171,8 +171,8 @@ static const ConfigItem default_config[] =
 						{ .idata = 1000 } },
 				{ .config = "" } };
 
-int TelescopeConfiguration::eqmount_config(EqMountServer *server, int argn,
-		char *argv[])
+int TelescopeConfiguration::eqmount_config(EqMountServer *server,
+		const char *cmd, int argn, char *argv[])
 {
 	char buf[256];
 	if (argn == 0)
@@ -183,8 +183,9 @@ int TelescopeConfiguration::eqmount_config(EqMountServer *server, int argn,
 		{
 			// Get string representing the value
 			getStringFromConfig(p->config, buf, sizeof(buf));
-			stprintf(server->getStream(), "%s,%s,%s,%s\r\n", p->config->config,
-					p->config->name, typeName(p->config->type), buf);
+			stprintf(server->getStream(), "%s %s,%s,%s,%s\r\n", cmd,
+					p->config->config, p->config->name,
+					typeName(p->config->type), buf);
 		}
 	}
 	else
@@ -193,15 +194,15 @@ int TelescopeConfiguration::eqmount_config(EqMountServer *server, int argn,
 		ConfigItem *config = instance.getConfigItem(config_name);
 		if (!config)
 		{
-			stprintf(server->getStream(), "Error: config %s not found\r\n",
-					config_name);
+			stprintf(server->getStream(), "%s Error: config %s not found\r\n",
+					cmd, config_name);
 			return ERR_PARAM_OUT_OF_RANGE;
 		}
 		if (argn == 1)
 		{
 			// Print value of the config
 			getStringFromConfig(config, buf, sizeof(buf));
-			stprintf(server->getStream(), "%s\r\n", buf);
+			stprintf(server->getStream(), "%s %s\r\n", cmd, buf);
 		}
 		else if (argn == 2)
 		{
@@ -213,12 +214,12 @@ int TelescopeConfiguration::eqmount_config(EqMountServer *server, int argn,
 			else if (strcmp(argv[1], "name") == 0)
 			{
 				// Print name
-				stprintf(server->getStream(), "%s\r\n", config->name);
+				stprintf(server->getStream(), "%s %s\r\n", cmd, config->name);
 			}
 			else if (strcmp(argv[1], "help") == 0)
 			{
 				// Print name
-				stprintf(server->getStream(), "%s\r\n", config->help);
+				stprintf(server->getStream(), "%s %s\r\n", cmd, config->help);
 			}
 			else if (strcmp(argv[1], "limit") == 0)
 			{
@@ -229,11 +230,11 @@ int TelescopeConfiguration::eqmount_config(EqMountServer *server, int argn,
 					switch (config->type)
 					{
 					case DATATYPE_INT:
-						stprintf(server->getStream(), "%d %d\r\n",
+						stprintf(server->getStream(), "%s %d %d\r\n", cmd,
 								config->min.idata, config->max.idata);
 						break;
 					case DATATYPE_DOUBLE:
-						stprintf(server->getStream(), "%.8f %.8f\r\n",
+						stprintf(server->getStream(), "%s %.8f %.8f\r\n", cmd,
 								config->min.ddata, config->max.ddata);
 						break;
 					default:
@@ -242,7 +243,7 @@ int TelescopeConfiguration::eqmount_config(EqMountServer *server, int argn,
 				}
 				else
 				{
-					stprintf(server->getStream(), "Not supported.\r\n");
+					stprintf(server->getStream(), "%s limit not supported for %s.\r\n", cmd, config->config);
 				}
 			}
 			else

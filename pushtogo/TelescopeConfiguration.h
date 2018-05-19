@@ -24,8 +24,7 @@ typedef enum
 typedef union
 {
 	int idata;
-	double ddata;
-	bool bdata;
+	double ddata;bool bdata;
 	char strdata[32];
 } DataValue;
 
@@ -37,10 +36,8 @@ struct ConfigItem
 	DataType type;
 	DataValue value;
 	DataValue min;
-	DataValue max;
-	bool extra;
+	DataValue max;bool extra;
 };
-
 
 class TelescopeConfiguration
 {
@@ -65,7 +62,6 @@ public:
 		return getStringFromConfig(getInstance().getConfigItemCheck(name), buf,
 				len);
 	}
-
 
 private:
 	TelescopeConfiguration();
@@ -95,13 +91,13 @@ private:
 	static bool getBoolFromConfig(ConfigItem *);
 	static char *getStringFromConfig(ConfigItem *, char buf[], int len);
 
-
 	static bool setIntToConfig(ConfigItem *, int value);
 	static bool setDoubleToConfig(ConfigItem *, double value);
 	static bool setBoolToConfig(ConfigItem *, bool value);
 	static bool setStringToConfig(ConfigItem *, char *value);
 
-	static int eqmount_config(EqMountServer *server, int argn, char *argv[]);
+	static int eqmount_config(EqMountServer *server, const char *cmd, int argn,
+			char *argv[]);
 };
 
 #endif /* PUSHTOGO_TELESCOPECONFIGURATION_H_ */
