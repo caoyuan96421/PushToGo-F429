@@ -26,7 +26,7 @@ void stprintf(FileHandle &f, const char *fmt, ...)
 
 EqMountServer::EqMountServer(FileHandle &stream, bool echo) :
 		eq_mount(NULL), stream(stream), thread(osPriorityBelowNormal,
-		OS_STACK_SIZE, NULL, "EqMountServer"), echo(echo), commandRunning(false)
+		OS_STACK_SIZE, NULL, "EqMountServer"), echo(echo)
 {
 	thread.start(callback(this, &EqMountServer::task_thread));
 }
@@ -38,7 +38,6 @@ EqMountServer::~EqMountServer()
 
 void EqMountServer::task_thread()
 {
-	commandRunning = false;
 	EventQueue queue(4 * EVENTS_EVENT_SIZE);
 	Thread evq_thd(osThreadGetPriority(Thread::gettid()), OS_STACK_SIZE, NULL,
 			"EqMountServer dispatcher");
@@ -171,24 +170,25 @@ void EqMountServer::task_thread()
 			continue;
 		}
 
-		if (commandRunning)
+		// Commands that can return immediately, directly run them
+		if (cind < 4)
 		{
-			// Already running, only accepts stop/estop/read/time
-			if (cind < 4)
-			{
-				int ret = commandlist[cind].fptr(this, command, argn, args);
-				// Send the return status back
-				stprintf(stream, "%d %s\r\n", ret, command);
-			}
+			int ret = commandlist[cind].fptr(this, command, argn, args);
+			// Send the return status back
+			stprintf(stream, "%d %s\r\n", ret, command);
 			delete[] buffer;
 			delete[] args;
 			continue;
 		}
 
-		commandRunning = true;
+		// Queue the command
 		Callback<void(ServerCommand&, int, char**, char*)> cb = callback(this,
 				&EqMountServer::command_execute);
-		queue.call(cb, commandlist[cind], argn, args, buffer); // Use the event dispatching thread to run this
+		while (queue.call(cb, commandlist[cind], argn, args, buffer) == 0)
+		{ // Use the event dispatching thread to run this
+			debug("Event queue full. Wait...\r\n");
+			Thread::wait(100);
+		}
 
 		// The buffer and argument list will be deleted when the command finishes execution in the event dispatch thread
 	}
@@ -218,9 +218,8 @@ void EqMountServer::command_execute(ServerCommand &cmd, int argn, char *args[],
 	// Send the return status back
 	stprintf(stream, "%d %s\r\n", ret, cmd.cmd);
 
-	commandRunning = false;
 	delete[] buffer;
-	delete args;
+	delete[] args;
 }
 
 static int eqmount_stop(EqMountServer *server, const char *cmd, int argn,
@@ -230,7 +229,7 @@ static int eqmount_stop(EqMountServer *server, const char *cmd, int argn,
 	{
 		return ERR_WRONG_NUM_PARAM;
 	}
-	server->getEqMount()->stopWait();
+	server->getEqMount()->stop();
 	return 0;
 }
 
@@ -329,17 +328,25 @@ static int eqmount_speed(EqMountServer *server, const char *cmd, int argn,
 	char *tp;
 	if (argn == 1)
 	{
-		double speed = strtod(argv[0], &tp);
-		if (tp == argv[0])
+		// Print speed
+		double speed = 0;
+		if (strcmp(argv[0], "slew") == 0)
+		{
+			speed = server->getEqMount()->getSlewSpeed();
+		}
+		else if (strcmp(argv[0], "track") == 0)
+		{
+			speed = server->getEqMount()->getTrackSpeedSidereal();
+		}
+		else if (strcmp(argv[0], "guide") == 0)
+		{
+			speed = server->getEqMount()->getGuideSpeedSidereal();
+		}
+		else
 		{
 			return ERR_PARAM_OUT_OF_RANGE;
 		}
-		if (speed <= 0
-				|| speed > TelescopeConfiguration::getDouble("max_speed"))
-		{
-			return ERR_PARAM_OUT_OF_RANGE;
-		}
-		server->getEqMount()->setSlewSpeed(speed);
+		stprintf(server->getStream(), "%s %f\r\n", cmd, speed);
 	}
 	else if (argn == 2)
 	{

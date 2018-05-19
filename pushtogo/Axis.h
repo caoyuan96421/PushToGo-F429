@@ -20,14 +20,23 @@ class Axis;
 #define AXIS_GUIDE_SIGNAL			0x00020000
 #define AXIS_STOP_SIGNAL			0x00040000
 #define AXIS_EMERGE_STOP_SIGNAL		0x00080000
+#define AXIS_STOP_KEEPSPEED_SIGNAL		0x00100000
 
 /**
  * status of the Axis object
  */
 typedef enum
 {
-	AXIS_STOPPED = 0, AXIS_SLEWING, AXIS_TRACKING,
+	AXIS_STOPPED = 0, AXIS_SLEWING, AXIS_TRACKING, AXIS_INERTIAL
 } axisstatus_t;
+
+typedef enum
+{
+	AXIS_NOT_SLEWING,
+	AXIS_SLEW_ACCELERATING,
+	AXIS_SLEW_CONSTANT_SPEED,
+	AXIS_SLEW_DECELERATING
+} axisslewstate_t;
 
 /** Define the rotation direction
  * AXIS_ROTATE_POSITIVE: +angle
@@ -180,8 +189,24 @@ public:
 	}
 
 	/**
+	 * Remove all queued commands if there are any. This function should be called if you want to ensure the mount if completely stopped
+	 */
+	void flushCommandQueue()
+	{
+		while (!task_queue.empty())
+		{
+			osEvent evt = task_queue.get(0);
+			if (evt.status == osEventMessage)
+			{
+				task_pool.free((msg_t*) evt.value.p);
+			}
+		}
+	}
+
+	/**
 	 * Stop slewing or tracking. Calling this function will stop the axis from indefinite slewing, or tracking
 	 * @note In the case of indefinite slewing, the axis will perform a deceleration and then stop
+	 * @note If there are queued commands, they will be run immediately afterwards
 	 */
 	void stop()
 	{
@@ -190,10 +215,21 @@ public:
 
 	/**
 	 * Perform an emergency stop. This should stop in ALL situations IMMEDIATELY without performing deceleration.
+	 * @note this call will kill all queued commands, so the mount will be fully stopped
 	 */
 	void emergency_stop()
 	{
+		flushCommandQueue();
 		task_thread->signal_set(AXIS_EMERGE_STOP_SIGNAL);
+	}
+
+	/**
+	 * Only takes effect when decelerating from a slew. Signals the axis to keep its current speed, and enters AXIS_INERTIAL state
+	 * This state can be exited by performing another slew/slew_indefinite and stopped in the normal way
+	 */
+	void stopKeepSpeed()
+	{
+		task_thread->signal_set(AXIS_STOP_KEEPSPEED_SIGNAL);
 	}
 
 	/** @param new angle
@@ -217,19 +253,9 @@ public:
 		return status;
 	}
 
-	double getAcceleration() const
-	{
-		return acceleration;
-	}
-
 	/** @param acceleration in deg/s^2
 	 * @note Must be called only when the axis is stopped
 	 */
-	void setAcceleration(double acceleration)
-	{
-		if (acceleration > 0)
-			this->acceleration = acceleration;
-	}
 
 	double getSlewSpeed() const
 	{
@@ -275,23 +301,19 @@ public:
 			this->guideSpeed = guideSpeed * sidereal_speed;
 	}
 
-	double getCorrectionSpeedSidereal() const
-	{
-		return correctionSpeed / sidereal_speed;
-	}
-
-	/** @param new correction speed in sidereal rate
-	 * @note Must be called only when the axis is stopped
-	 */
-	void setCorrectionSpeedSidereal(double correctionSpeed)
-	{
-		if (correctionSpeed > 0)
-			this->correctionSpeed = correctionSpeed * sidereal_speed;
-	}
-
 	double getCurrentSpeed() const
 	{
 		return currentSpeed;
+	}
+
+	axisslewstate_t getSlewState() const
+	{
+		return slewState;
+	}
+
+	axisrotdir_t getCurrentDirection() const
+	{
+		return currentDirection;
 	}
 
 protected:
@@ -317,10 +339,9 @@ protected:
 	volatile axisrotdir_t currentDirection; // Current direction
 	double slewSpeed; /// Slewing speed in deg/s
 	double trackSpeed; /// Tracking speed in deg/s (no accel/deceleration)
-	double correctionSpeed; /// Correction speed in deg/s (no accel/deceleration)
 	double guideSpeed; /// Guide speed in deg/s. this amount will be subtracted/added to the trackSpeed, and so must be less than track speed
-	double acceleration; /// Acceleration in deg/s^2
 	volatile axisstatus_t status;
+	volatile axisslewstate_t slewState;
 	Thread *task_thread; ///Thread for executing all lower-level tasks
 	Queue<msg_t, 16> task_queue; ///Queue of messages
 	Queue<void, 16> guide_queue; ///Guide pulse queue

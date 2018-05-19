@@ -37,7 +37,6 @@ protected:
 	EquatorialMount *eq_mount;
 	FileHandle &stream;
 	Thread thread;bool echo; /// Echo
-	volatile bool commandRunning; // Whether a command is already running.
 
 	void task_thread();
 

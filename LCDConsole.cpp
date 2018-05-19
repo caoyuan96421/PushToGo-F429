@@ -24,6 +24,7 @@ Thread LCDConsole::thread(osPriorityLow, OS_STACK_SIZE, NULL, "LCD Console");
 LCDConsole lcd_handle_out("lcd_stdout", LCD_COLOR_WHITE);
 LCDConsole lcd_handle_err("lcd_stderr", LCD_COLOR_YELLOW);
 
+
 #define BG_COLOR LCD_COLOR_BLACK
 
 void idle_hook()

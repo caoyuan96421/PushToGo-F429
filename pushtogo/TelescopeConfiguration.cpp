@@ -96,10 +96,10 @@ static const ConfigItem default_config[] =
 						{ .ddata = 1 }, .min =
 						{ .ddata = 0 }, .max =
 						{ .ddata = 100 } },
-				{ .config = "default_correction_speed_sidereal", .name =
+				{ .config = "correction_speed_sidereal", .name =
 						"Default correction speed",
 						.help =
-								"Default correction speed in multiple of sidereal rate.",
+								"Correction speed in multiple of sidereal rate.",
 						.type = DATATYPE_DOUBLE, .value =
 						{ .ddata = 32 }, .min =
 						{ .ddata = 0 }, .max =
@@ -111,9 +111,9 @@ static const ConfigItem default_config[] =
 						{ .ddata = 0.5 }, .min =
 						{ .ddata = 0 }, .max =
 						{ .ddata = 100 } },
-				{ .config = "default_acceleration", .name =
-						"Default acceleration", .help =
-						"Default acceleration in deg/s^2.", .type =
+				{ .config = "acceleration", .name =
+						"Acceleration", .help =
+						"Acceleration in deg/s^2.", .type =
 						DATATYPE_DOUBLE, .value =
 				{ .ddata = 2 }, .min =
 				{ .ddata = 0.01 }, .max =

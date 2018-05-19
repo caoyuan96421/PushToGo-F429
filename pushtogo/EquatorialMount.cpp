@@ -152,7 +152,7 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 		if (status & MOUNT_NUDGING)
 		{
 			mountstatus_t oldstatus = status;
-			stopWait(); // Stop the mount
+			stop(); // Stop the mount
 			if (oldstatus == MOUNT_NUDGING)
 			{
 				// Stop the mount
@@ -226,16 +226,41 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 
 		// Request stop as necessary
 		if (ra_changed)
-			ra.stop();
+		{
+			ra.flushCommandQueue();
+			if (ra.getSlewState() == AXIS_SLEW_DECELERATING
+					&& ra_dir == ra.getCurrentDirection())
+			{
+				ra.stopKeepSpeed();
+			}
+			else
+			{
+				ra.stop();
+			}
+		}
+
 		if (dec_changed)
-			dec.stop();
+		{
+			dec.flushCommandQueue();
+			if (dec.getSlewState() == AXIS_SLEW_DECELERATING
+					&& dec_dir == dec.getCurrentDirection())
+			{
+				dec.stopKeepSpeed();
+			}
+			else
+			{
+				dec.stop();
+			}
+		}
 
 		// Wait for stop together
-		while ((ra_changed && ra.getStatus() != AXIS_STOPPED)
-				|| (dec_changed && dec.getStatus() != AXIS_STOPPED))
-		{
-			Thread::yield();
-		}
+//		while ((ra_changed && ra.getStatus() != AXIS_STOPPED
+//				&& ra.getStatus() != AXIS_INERTIAL)
+//				|| (dec_changed && dec.getStatus() != AXIS_STOPPED
+//						&& dec.getStatus() != AXIS_INERTIAL))
+//		{
+//			Thread::yield();
+//		}
 
 		// DEC axis is ok to start regardless of tracking state
 		if (dec_changed && dec_dir != AXIS_ROTATE_STOP)
@@ -257,7 +282,7 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 					// This is the complicated part
 					double trackSpeed = ra.getTrackSpeedSidereal()
 							* sidereal_speed;
-					debug_if(EM_DEBUG, "EM: ra, ns=%f, ts=%f\n", nudgeSpeed,
+					debug_if(EM_DEBUG > 1, "EM: ra, ns=%f, ts=%f\n", nudgeSpeed,
 							trackSpeed);
 					if (ra_dir == AXIS_ROTATE_POSITIVE)
 					{
@@ -295,6 +320,9 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 			status = MOUNT_NUDGING_TRACKING;
 		else
 			status = MOUNT_NUDGING;
+
+		debug_if(EM_DEBUG, "status=%d, ra_dir=%d, dec_dir=%d\r\n", (int) status,
+				(int) ra_dir, (int) dec_dir);
 	}
 	mutex_execution.unlock();
 
@@ -304,6 +332,21 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 osStatus EquatorialMount::stopNudge()
 {
 	return startNudge(NUDGE_NONE);
+}
+
+double EquatorialMount::getSlewSpeed()
+{
+	return ra.getSlewSpeed();
+}
+
+double EquatorialMount::getTrackSpeedSidereal()
+{
+	return ra.getTrackSpeedSidereal();
+}
+
+double EquatorialMount::getGuideSpeedSidereal()
+{
+	return ra.getGuideSpeedSidereal();
 }
 
 void EquatorialMount::updatePosition()
@@ -435,10 +478,3 @@ void EquatorialMount::setGuideSpeedSidereal(double rate)
 	mutex_execution.unlock();
 }
 
-void EquatorialMount::setAcceleration(double acc)
-{
-	mutex_execution.lock();
-	ra.setAcceleration(acc);
-	dec.setAcceleration(acc);
-	mutex_execution.unlock();
-}

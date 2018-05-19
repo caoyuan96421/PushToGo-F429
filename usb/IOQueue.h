@@ -30,7 +30,7 @@ struct ThreadQueue
 
 	bool full()
 	{
-		return (tail - head + 1) % MAX_THREAD_QUEUE == 0;
+		return ((tail - head + 1) % MAX_THREAD_QUEUE) == 0;
 	}
 
 	osThreadId_t get()
@@ -65,12 +65,15 @@ struct ThreadQueue
 			return osErrorTimeout;
 		}
 		core_util_critical_section_exit();
+
+		Thread::signal_clr(0x7FFFFFFF); // Clear all signals before adding to queue. Important!
 		if (put(Thread::gettid()) != 0)
 		{
 			// Queue full
+			printf("Queue full");
+			core_util_critical_section_enter();
 			return osErrorTimeout;
 		}
-		Thread::signal_clr(0x7FFFFFFF);
 		Thread::signal_wait(SIGNAL_QUEUE, wait);
 		core_util_critical_section_enter();
 		return osOK;
@@ -204,7 +207,9 @@ public:
 			head = buf;
 		if (!thq.empty())
 		{
-			osThreadFlagsSet(thq.get(), SIGNAL_QUEUE);
+			osThreadId_t th = thq.get();
+			if (th)
+				osThreadFlagsSet(th, SIGNAL_QUEUE);
 		}
 
 		core_util_critical_section_exit();
@@ -314,7 +319,9 @@ public:
 
 		if (!thq.empty())
 		{
-			osThreadFlagsSet(thq.get(), SIGNAL_QUEUE);
+			osThreadId_t th = thq.get();
+			if (th)
+				osThreadFlagsSet(th, SIGNAL_QUEUE);
 		}
 
 		core_util_critical_section_exit();
@@ -334,7 +341,6 @@ public:
 	 */
 	osStatus get(T *pdata, uint32_t wait = osWaitForever)
 	{
-
 		core_util_critical_section_enter();
 
 		// Wait for non-empty

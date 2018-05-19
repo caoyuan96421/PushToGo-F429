@@ -18,13 +18,11 @@ Axis::Axis(double stepsPerDeg, StepperMotor *stepper, const char *name) :
 				0), currentDirection(AXIS_ROTATE_POSITIVE), slewSpeed(
 				TelescopeConfiguration::getDouble("default_slew_speed")), trackSpeed(
 				TelescopeConfiguration::getDouble(
-						"default_track_speed_sidereal") * sidereal_speed), correctionSpeed(
+						"default_track_speed_sidereal") * sidereal_speed), guideSpeed(
 				TelescopeConfiguration::getDouble(
-						"default_correction_speed_sidereal") * sidereal_speed), guideSpeed(
-				TelescopeConfiguration::getDouble(
-						"default_guide_speed_sidereal") * sidereal_speed), acceleration(
-				TelescopeConfiguration::getDouble("default_acceleration")), status(
-				AXIS_STOPPED), slew_finish_sem(0, 1)
+						"default_guide_speed_sidereal") * sidereal_speed), status(
+				AXIS_STOPPED), slewState(AXIS_NOT_SLEWING), slew_finish_sem(0,
+				1)
 {
 	if (stepsPerDeg <= 0)
 		error("Axis: steps per degree must be > 0");
@@ -36,7 +34,7 @@ Axis::Axis(double stepsPerDeg, StepperMotor *stepper, const char *name) :
 	strcpy(taskName, name);
 	strcat(taskName, " task");
 	/*Start the task-handling thread*/
-	task_thread = new Thread(osPriorityRealtime,
+	task_thread = new Thread(osPriorityAboveNormal,
 	OS_STACK_SIZE, NULL, taskName);
 	task_thread->start(callback(this, &Axis::task));
 }
@@ -108,7 +106,7 @@ void Axis::task()
 			slew_finish_sem.release(); /*Send a signal so that the caller is free to run*/
 			break;
 		case msg_t::SIGNAL_SLEW_INDEFINITE:
-			if (status == AXIS_STOPPED)
+			if (status == AXIS_STOPPED || status == AXIS_INERTIAL)
 			{
 				slew(dir, 0.0, true);
 			}
@@ -142,10 +140,16 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		debug("%s: invalid angle.\n", axisName);
 		return;
 	}
+	if (dir == AXIS_ROTATE_STOP)
+	{
+		debug("%s: invalid direction.\n", axisName);
+	}
 
 	slew_mode(); // Switch to slew mode
 	Thread::signal_clr(AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL); // Clear flags
+	bool isInertial = (status == AXIS_INERTIAL);
 	status = AXIS_SLEWING;
+	slewState = AXIS_NOT_SLEWING;
 	currentDirection = dir;
 	stepdir_t sd = (dir == AXIS_ROTATE_POSITIVE) ? STEP_FORWARD : STEP_BACKWARD;
 
@@ -157,8 +161,10 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 	delta = (dest - angleDeg) * (dir == AXIS_ROTATE_POSITIVE ? 1 : -1); /*delta is the actual angle to rotate*/
 	delta = remainder(delta - 180.0, 360.0) + 180.0; /*Shift to 0-360 deg*/
 
+	double startSpeed = 0;
 	double endSpeed = slewSpeed, waitTime;
 	unsigned int ramp_steps;
+	double acceleration = TelescopeConfiguration::getDouble("acceleration");
 
 	if (!indefinite)
 	{
@@ -214,6 +220,9 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 	{
 		// Indefinite slewing mode
 		waitTime = INFINITY;
+		// If was in inertial mode, use startSpeed
+		if (isInertial)
+			startSpeed = currentSpeed;
 		// No need for correction
 		skip_correction = true;
 	}
@@ -224,7 +233,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		int wait_ms;
 		uint32_t flags;
 		/*Acceleration*/
-		ramp_steps = (unsigned int) (endSpeed
+		slewState = AXIS_SLEW_ACCELERATING;
+		ramp_steps = (unsigned int) ((endSpeed - startSpeed)
 				/ (TelescopeConfiguration::getInt("acceleration_step_time")
 						/ 1000.0) / acceleration);
 
@@ -237,7 +247,9 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		for (unsigned int i = 1; i <= ramp_steps; i++)
 		{
 			currentSpeed = stepper->setFrequency(
-					stepsPerDeg * endSpeed / ramp_steps * i) / stepsPerDeg; // Set and update currentSpeed with actual speed
+					stepsPerDeg
+							* ((endSpeed - startSpeed) / ramp_steps * i
+									+ startSpeed)) / stepsPerDeg; // Set and update currentSpeed with actual speed
 
 			if (i == 1)
 				stepper->start(sd);
@@ -268,6 +280,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		}
 
 		/*Keep slewing and wait*/
+		slewState = AXIS_SLEW_CONSTANT_SPEED;
 		debug_if(AXIS_DEBUG, "%s: wait for %f\n", axisName, waitTime); // TODO
 		wait_ms = (isinf(waitTime)) ? osWaitForever : (int) (waitTime * 1000);
 
@@ -285,6 +298,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 
 		stop:
 		/*Now deceleration*/
+		slewState = AXIS_SLEW_DECELERATING;
 		endSpeed = currentSpeed;
 		ramp_steps = (unsigned int) (currentSpeed
 				/ (TelescopeConfiguration::getInt("acceleration_step_time")
@@ -301,20 +315,32 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			currentSpeed = stepper->setFrequency(
 					stepsPerDeg * endSpeed / ramp_steps * i) / stepsPerDeg; // set and update accurate speed
 			// Wait. Now we only handle EMERGENCY STOP signal, since stop has been handled already
-			flags = osThreadFlagsWait(AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny,
+			flags = osThreadFlagsWait(
+			AXIS_EMERGE_STOP_SIGNAL | AXIS_STOP_KEEPSPEED_SIGNAL,
+			osFlagsWaitAny,
 					TelescopeConfiguration::getInt("acceleration_step_time"));
 
 			if (flags != osFlagsErrorTimeout)
 			{
-				// We're stopped!
-				skip_correction = true;
-				goto emerge_stop;
-
+				if (flags & AXIS_EMERGE_STOP_SIGNAL)
+				{
+					// We're stopped!
+					skip_correction = true;
+					goto emerge_stop;
+				}
+				else if (flags & AXIS_STOP_KEEPSPEED_SIGNAL)
+				{
+					// Keep current speed
+					status = AXIS_INERTIAL;
+					slewState = AXIS_NOT_SLEWING;
+					return;
+				}
 			}
 		}
 
 		emerge_stop:
 		/*Fully pull-over*/
+		slewState = AXIS_NOT_SLEWING;
 		stepper->stop();
 		currentSpeed = 0;
 	}
@@ -323,6 +349,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 	{
 		// Switch mode
 		correction_mode();
+		double correctionSpeed = TelescopeConfiguration::getDouble(
+				"correction_speed_sidereal") * sidereal_speed;
 		/*Use correction to goto the final angle with high resolution*/
 		angleDeg = getAngleDeg();
 		debug_if(AXIS_DEBUG, "%s: correct from %f to %f deg\n", axisName,

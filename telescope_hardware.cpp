@@ -169,8 +169,9 @@ static int eqmount_sys(EqMountServer *server, const char *cmd, int argn,
 		osThreadState_t state = osThreadGetState(thdlist[i]);
 		const char *s = "";
 		const char *n;
+		osPriority_t prio = osThreadGetPriority(thdlist[i]);
 
-		if (osThreadGetPriority(thdlist[i]) == osPriorityIdle)
+		if (prio == osPriorityIdle)
 		{
 			n = "Idle thread";
 		}
@@ -205,8 +206,8 @@ static int eqmount_sys(EqMountServer *server, const char *cmd, int argn,
 			s = "Unknown";
 			break;
 		}
-		stprintf(server->getStream(), " - %10s 0x%08x %s \r\n", s,
-				(uint32_t) thdlist[i], n);
+		stprintf(server->getStream(), " - %10s 0x%08x %3d %s \r\n", s,
+				(uint32_t) thdlist[i], (int) prio, n);
 	}
 
 	stprintf(server->getStream(), "\r\nRecent CPU usage: %.1f%%\r\n",

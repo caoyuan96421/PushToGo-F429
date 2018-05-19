@@ -239,24 +239,21 @@ public:
 	 * @param rate new speed
 	 */
 	void setSlewSpeed(double rate);
+	double getSlewSpeed();
 
 	/**
 	 * Set tracking speed of RA axis
 	 * @param rate new speed in sidereal rate
 	 */
 	void setTrackSpeedSidereal(double rate);
+	double getTrackSpeedSidereal();
 
 	/**
 	 * Set guiding speed of RA axis
 	 * @param rate new speed in sidereal rate
 	 */
 	void setGuideSpeedSidereal(double rate);
-
-	/**
-	 * Set slew rate of both axis
-	 * @param rate new speed
-	 */
-	void setAcceleration(double acc);
+	double getGuideSpeedSidereal();
 
 	/**
 	 * Print current position to STDOUT. Should call updatePosition to update the current position
