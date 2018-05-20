@@ -34,7 +34,6 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 
 	debug_if(EM_DEBUG, "dest ra=%.2f, dec=%.2f\n", dest.ra, dest.dec);
 
-	// The mount is almost at position after the first run, but the time lapsed since the start of slew must be corrected. Simply do goTo again
 	for (int i = 0; i < 2; i++)
 	{
 		LocalEquatorialCoordinates dest_local =
@@ -49,7 +48,7 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 		MountCoordinates dest_mount = CelestialMath::localEquatorialToMount(
 				dest_local, PIER_SIDE_AUTO) + calibration.offset;
 
-		osStatus s = goToMount(dest_mount);
+		osStatus s = goToMount(dest_mount, (i > 0)); // Use correction only for the second time
 		if (s != osOK)
 			return s;
 	}
@@ -57,20 +56,22 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 	return osOK;
 }
 
-osStatus EquatorialMount::goToMount(MountCoordinates dest_mount)
+osStatus EquatorialMount::goToMount(MountCoordinates dest_mount,
+bool withCorrection)
 {
+	mutex_execution.lock();
 	bool was_tracking = false;
 	if (status == MOUNT_TRACKING)
 	{
 		was_tracking = true;
-		stopWait();
+		stopSync();
 	}
 	else if (status != MOUNT_STOPPED)
 	{
 		debug("EM: goTo requested while mount is not stopped.\n");
+		mutex_execution.unlock();
 		return osErrorParameter;
 	}
-	mutex_execution.lock();
 	debug_if(EM_DEBUG, "EM: goTo\n");
 	debug_if(EM_DEBUG, "dstmnt ra=%.2f, dec=%.2f\n", dest_mount.ra_delta,
 			dest_mount.dec_delta);
@@ -92,11 +93,11 @@ osStatus EquatorialMount::goToMount(MountCoordinates dest_mount)
 
 	debug_if(EM_DEBUG, "EM: start slewing\n");
 	status = MOUNT_SLEWING;
-	ra.startSlewTo(ra_dir, dest_mount.ra_delta);
-	dec.startSlewTo(dec_dir, dest_mount.dec_delta);
+	ra.startSlewTo(ra_dir, dest_mount.ra_delta, withCorrection);
+	dec.startSlewTo(dec_dir, dest_mount.dec_delta, withCorrection);
 
-	ra.waitForSlew();
-	dec.waitForSlew();
+	int ret = (int) ra.waitForSlew();
+	ret |= (int) dec.waitForSlew();
 
 	debug_if(EM_DEBUG, "EM: slewing finished\n");
 
@@ -104,7 +105,7 @@ osStatus EquatorialMount::goToMount(MountCoordinates dest_mount)
 
 	mutex_execution.unlock();
 
-	if (was_tracking)
+	if (was_tracking && !(ret & (FINISH_ERROR | FINISH_EMERG_STOPPED)))
 	{
 		startTracking();
 	}
@@ -114,7 +115,13 @@ osStatus EquatorialMount::goToMount(MountCoordinates dest_mount)
 	if (EM_DEBUG)
 		printPosition();
 
-	return osOK;
+	if (ret)
+	{
+		// Stopped during slew
+		return ret;
+	}
+	else
+		return osOK;
 }
 
 osStatus EquatorialMount::startTracking()
@@ -152,7 +159,7 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 		if (status & MOUNT_NUDGING)
 		{
 			mountstatus_t oldstatus = status;
-			stop(); // Stop the mount
+			stopAsync(); // Stop the mount
 			if (oldstatus == MOUNT_NUDGING)
 			{
 				// Stop the mount
@@ -297,8 +304,8 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 						s = ra.startSlewingIndefinite(AXIS_ROTATE_POSITIVE);
 					}
 					else if (nudgeSpeed > trackSpeed)
-					{						// ra_dir == AXIS_ROTATE_NEGATIVE
-											// Direction inverted
+					{					// ra_dir == AXIS_ROTATE_NEGATIVE
+										// Direction inverted
 						ra.setSlewSpeed(nudgeSpeed - trackSpeed);
 						ra.startSlewingIndefinite(AXIS_ROTATE_NEGATIVE);
 					}
@@ -349,6 +356,25 @@ double EquatorialMount::getGuideSpeedSidereal()
 	return ra.getGuideSpeedSidereal();
 }
 
+osStatus EquatorialMount::stopTracking()
+{
+	if ((status & MOUNT_TRACKING) == 0)
+	{
+		return osErrorParameter;
+	}
+	mutex_execution.lock();
+	if (status == MOUNT_TRACKING)
+	{
+		stopSync();
+	}
+	else if (status == MOUNT_NUDGING_TRACKING)
+	{
+		status = MOUNT_NUDGING;
+	}
+	mutex_execution.unlock();
+	return osOK;
+}
+
 void EquatorialMount::updatePosition()
 {
 	// Lock the mutex to avoid race condition on the current position values
@@ -386,24 +412,20 @@ void EquatorialMount::emergencyStop()
 	curr_nudge_dir = NUDGE_NONE;
 }
 
-void EquatorialMount::stop()
+void EquatorialMount::stopAsync()
 {
-	if (ra.getStatus() != AXIS_STOPPED)
-		ra.stop();
-	if (dec.getStatus() != AXIS_STOPPED)
-		dec.stop();
+	ra.stop();
+	dec.stop();
 	status = MOUNT_STOPPED;
 }
 
-void EquatorialMount::stopWait()
+void EquatorialMount::stopSync()
 {
-	if (ra.getStatus() != AXIS_STOPPED)
-		ra.stop();
-	if (dec.getStatus() != AXIS_STOPPED)
-		dec.stop();
 	// Wait until they're fully stopped
 	while (ra.getStatus() != AXIS_STOPPED || dec.getStatus() != AXIS_STOPPED)
 	{
+		ra.stop();
+		dec.stop();
 		Thread::yield();
 	}
 	status = MOUNT_STOPPED;

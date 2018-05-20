@@ -225,11 +225,18 @@ void EqMountServer::command_execute(ServerCommand &cmd, int argn, char *args[],
 static int eqmount_stop(EqMountServer *server, const char *cmd, int argn,
 		char *argv[])
 {
-	if (argn != 0)
+	if (argn == 0)
+	{
+		server->getEqMount()->stopAsync();
+	}
+	else if (argn == 1 && strcmp(argv[0], "track") == 0)
+	{
+		server->getEqMount()->stopTracking();
+	}
+	else
 	{
 		return ERR_WRONG_NUM_PARAM;
 	}
-	server->getEqMount()->stop();
 	return 0;
 }
 
@@ -325,7 +332,6 @@ static int eqmount_goto(EqMountServer *server, const char *cmd, int argn,
 static int eqmount_speed(EqMountServer *server, const char *cmd, int argn,
 		char *argv[])
 {
-	char *tp;
 	if (argn == 1)
 	{
 		// Print speed
@@ -577,6 +583,41 @@ static int eqmount_read(EqMountServer *server, const char *cmd, int argn,
 	return 0;
 }
 
+static int eqmount_state(EqMountServer *server, const char *cmd, int argn,
+		char *argv[])
+{
+
+	if (argn == 0)
+	{
+		const char *s;
+		switch (server->getEqMount()->getStatus())
+		{
+		case MOUNT_STOPPED:
+			s = "stopped";
+			break;
+		case MOUNT_SLEWING:
+			s = "slewing";
+			break;
+		case MOUNT_TRACKING:
+			s = "tracking";
+			break;
+		case MOUNT_NUDGING:
+			s = "nudging";
+			break;
+		case MOUNT_NUDGING_TRACKING:
+			s = "nudging_tracking";
+			break;
+		}
+		stprintf(server->getStream(), "%s %s\r\n", cmd, s);
+	}
+	else
+	{
+		return ERR_WRONG_NUM_PARAM;
+	}
+
+	return 0;
+}
+
 static int eqmount_help(EqMountServer *server, const char *cmd, int argn,
 		char *argv[])
 {
@@ -759,6 +800,7 @@ ServerCommand commandlist[MAX_COMMAND] =
 		ServerCommand("estop", "Emergency stop", eqmount_estop), /// Emergency Stop
 		ServerCommand("read", "Read current RA/DEC position", eqmount_read), /// Read Position
 		ServerCommand("time", "Get and set system time", eqmount_time), /// System time
+		ServerCommand("status", "Get the mount state", eqmount_state), /// System time
 		/// Above are allowed commands when another command is running
 
 				ServerCommand("goto",

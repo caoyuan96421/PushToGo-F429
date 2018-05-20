@@ -22,7 +22,7 @@ Axis::Axis(double stepsPerDeg, StepperMotor *stepper, const char *name) :
 				TelescopeConfiguration::getDouble(
 						"default_guide_speed_sidereal") * sidereal_speed), status(
 				AXIS_STOPPED), slewState(AXIS_NOT_SLEWING), slew_finish_sem(0,
-				1)
+				1), slew_finish_state(FINISH_COMPLETE)
 {
 	if (stepsPerDeg <= 0)
 		error("Axis: steps per degree must be > 0");
@@ -68,6 +68,7 @@ void Axis::task()
 		enum msg_t::sig_t signal;
 		float value;
 		axisrotdir_t dir;
+		bool wc;
 
 		// Wait for next message
 		osEvent evt = task_queue.get();
@@ -78,6 +79,7 @@ void Axis::task()
 			signal = message->signal;
 			value = message->value;
 			dir = message->dir;
+			wc = message->withCorrection;
 			task_pool.free(message);
 		}
 		else
@@ -95,7 +97,7 @@ void Axis::task()
 		case msg_t::SIGNAL_SLEW_TO:
 			if (status == AXIS_STOPPED)
 			{
-				slew(dir, value, false);
+				slew(dir, value, false, wc);
 			}
 			else
 			{
@@ -108,7 +110,7 @@ void Axis::task()
 		case msg_t::SIGNAL_SLEW_INDEFINITE:
 			if (status == AXIS_STOPPED || status == AXIS_INERTIAL)
 			{
-				slew(dir, 0.0, true);
+				slew(dir, 0.0, true, false);
 			}
 			else
 			{
@@ -133,7 +135,8 @@ void Axis::task()
 	}
 }
 
-void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
+void Axis::slew(axisrotdir_t dir, double dest, bool indefinite,
+bool useCorrection)
 {
 	if (!indefinite && (isnan(dest) || isinf(dest)))
 	{
@@ -150,12 +153,12 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 	bool isInertial = (status == AXIS_INERTIAL);
 	status = AXIS_SLEWING;
 	slewState = AXIS_NOT_SLEWING;
+	slew_finish_state = FINISH_COMPLETE;
 	currentDirection = dir;
 	stepdir_t sd = (dir == AXIS_ROTATE_POSITIVE) ? STEP_FORWARD : STEP_BACKWARD;
 
 	/* Calculate the angle to rotate*/
 	bool skip_slew = false;
-	bool skip_correction = false;
 	double angleDeg = getAngleDeg();
 	double delta;
 	delta = (dest - angleDeg) * (dir == AXIS_ROTATE_POSITIVE ? 1 : -1); /*delta is the actual angle to rotate*/
@@ -224,7 +227,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		if (isInertial)
 			startSpeed = currentSpeed;
 		// No need for correction
-		skip_correction = true;
+		useCorrection = false;
 	}
 
 	/*Slewing -> accel, wait, decel*/
@@ -267,13 +270,15 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			else if ((flags & osFlagsError) == 0)
 			{
 				// We're stopped!
-				skip_correction = true;
+				useCorrection = false;
 				if (flags & AXIS_EMERGE_STOP_SIGNAL)
 				{
+					slew_finish_state = FINISH_EMERG_STOPPED;
 					goto emerge_stop;
 				}
 				else if (flags & AXIS_STOP_SIGNAL)
 				{
+					slew_finish_state = FINISH_STOPPED;
 					goto stop;
 				}
 			}
@@ -288,12 +293,17 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny, wait_ms); /*Wait the remaining time*/
 		if (flags != osFlagsErrorTimeout)
 		{	// We're stopped!
-			skip_correction = true;
+			useCorrection = false;
 			if (flags & AXIS_EMERGE_STOP_SIGNAL)
 			{
+				slew_finish_state = FINISH_EMERG_STOPPED;
 				goto emerge_stop;
 			}
-			// Normal stop will be handled automatically
+			else
+			{
+				slew_finish_state = FINISH_STOPPED;
+				// Normal stop will be handled automatically
+			}
 		}
 
 		stop:
@@ -325,7 +335,8 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 				if (flags & AXIS_EMERGE_STOP_SIGNAL)
 				{
 					// We're stopped!
-					skip_correction = true;
+					useCorrection = false;
+					slew_finish_state = FINISH_EMERG_STOPPED;
 					goto emerge_stop;
 				}
 				else if (flags & AXIS_STOP_KEEPSPEED_SIGNAL)
@@ -345,7 +356,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 		currentSpeed = 0;
 	}
 
-	if (!skip_correction)
+	if (useCorrection)
 	{
 		// Switch mode
 		correction_mode();
@@ -362,6 +373,10 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			debug(
 					"%s: correction too large: %f. Check hardware configuration.\n",
 					axisName, diff);
+			stop();
+			idle_mode();
+			currentSpeed = 0;
+			slew_finish_state = FINISH_EMERG_STOPPED;
 			status = AXIS_STOPPED;
 			return;
 		}
@@ -398,6 +413,7 @@ void Axis::slew(axisrotdir_t dir, double dest, bool indefinite)
 			if (flags != osFlagsErrorTimeout)
 			{
 				// Emergency stop!
+				slew_finish_state = FINISH_EMERG_STOPPED;
 				goto emerge_stop2;
 			}
 

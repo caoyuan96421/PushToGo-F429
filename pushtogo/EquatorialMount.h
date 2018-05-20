@@ -91,7 +91,7 @@ public:
 	 */
 	osStatus goTo(double ra_dest, double dec_dest);
 	osStatus goTo(EquatorialCoordinates dest);
-	osStatus goToMount(MountCoordinates mc);
+	osStatus goToMount(MountCoordinates mc, bool withCorrection = true);
 	osStatus goToIndex()
 	{
 		return goToMount(MountCoordinates(0, 0));
@@ -101,6 +101,7 @@ public:
 	osStatus stopNudge();
 
 	osStatus startTracking();
+	osStatus stopTracking();
 
 	/**
 	 * Guide on specified direction for specified time
@@ -184,13 +185,13 @@ public:
 	 * Call stop of the Axis objects
 	 * @note This function can be called from any context (including ISR) to perform a soft stop of the mount
 	 */
-	void stop();
+	void stopAsync();
 
 	/** BLOCKING. Cannot be called in ISR.
 	 * Call stop of the Axis objects and wait until they are stopped.
 	 * @note This function can be called from any context (including ISR) to perform a soft stop of the mount
 	 */
-	void stopWait();
+	void stopSync();
 
 	/**
 	 * Get current equatorial coordinates

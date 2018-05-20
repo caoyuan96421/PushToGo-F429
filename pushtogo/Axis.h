@@ -47,6 +47,14 @@ typedef enum
 	AXIS_ROTATE_STOP = 0, AXIS_ROTATE_POSITIVE = 1, AXIS_ROTATE_NEGATIVE = 2
 } axisrotdir_t;
 
+typedef enum
+{
+	FINISH_COMPLETE = 0,
+	FINISH_STOPPED = 1,
+	FINISH_EMERG_STOPPED = 2,
+	FINISH_ERROR = 4
+} finishstate_t;
+
 /** General Rotating Axis class
  * Handles low-level stepper timing, calculates the speed and distance to rotate
  * API provides comprehensive slewing, tracking and guiding.
@@ -71,7 +79,8 @@ public:
 	 * @param angleDeg Angle to rotate
 	 * @return osStatus
 	 */
-	osStatus startSlewTo(axisrotdir_t dir, double angle)
+	osStatus startSlewTo(axisrotdir_t dir, double angle, bool withCorrection =
+	true)
 	{
 		msg_t *message = task_pool.alloc();
 		if (!message)
@@ -81,6 +90,7 @@ public:
 		message->signal = msg_t::SIGNAL_SLEW_TO;
 		message->value = angle;
 		message->dir = dir;
+		message->withCorrection = withCorrection;
 		osStatus s;
 
 		debug_if(0, "%s: CLR SLEW 0x%08x\n", axisName, Thread::gettid());
@@ -98,10 +108,16 @@ public:
 	/**
 	 * Wait for a slew to finish. Must be called after and only once after a call to startSlewTo, from the same thread
 	 */
-	osStatus waitForSlew()
+	finishstate_t waitForSlew()
 	{
 		debug_if(0, "%s: WAIT SLEW 0x%08x\n", axisName, Thread::gettid());
-		return slew_finish_sem.wait();
+		if (slew_finish_sem.wait() <= 0)
+		{
+			return FINISH_ERROR;
+		}
+
+		// Check mount status
+		return slew_finish_state;
 	}
 
 	/** BLOCKING
@@ -133,6 +149,7 @@ public:
 		}
 		message->signal = msg_t::SIGNAL_SLEW_INDEFINITE;
 		message->dir = dir;
+		message->withCorrection = false;
 		osStatus s;
 		if ((s = task_queue.put(message)) != osOK)
 		{
@@ -210,6 +227,7 @@ public:
 	 */
 	void stop()
 	{
+		flushCommandQueue();
 		task_thread->signal_set(AXIS_STOP_SIGNAL);
 	}
 
@@ -325,7 +343,7 @@ protected:
 			SIGNAL_SLEW_TO = 0, SIGNAL_SLEW_INDEFINITE, SIGNAL_TRACK
 		} signal;
 		double value;
-		axisrotdir_t dir;
+		axisrotdir_t dir;bool withCorrection;
 	} msg_t;
 
 	/*Configurations*/
@@ -347,11 +365,13 @@ protected:
 	Queue<void, 16> guide_queue; ///Guide pulse queue
 	MemoryPool<msg_t, 16> task_pool; ///MemoryPool for allocating messages
 	Semaphore slew_finish_sem;
+	volatile finishstate_t slew_finish_state;
 
 	void task();
 
 	/*Low-level functions for internal use*/
-	void slew(axisrotdir_t dir, double dest, bool indefinite);
+	void slew(axisrotdir_t dir, double dest, bool indefinite,
+	bool useCorrection);
 	void track(axisrotdir_t dir);
 
 	/*These functions can be overriden to provide mode selection before each type of operation is performed, such as microstepping and current setting*/
