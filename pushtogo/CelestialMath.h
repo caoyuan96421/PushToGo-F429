@@ -150,7 +150,8 @@ struct AlignmentStar
 			star_ref(ref), star_meas(meas), timestamp(t)
 	{
 	}
-	LocalEquatorialCoordinates star_ref_local(const LocationCoordinates &loc) const;
+	LocalEquatorialCoordinates star_ref_local(
+			const LocationCoordinates &loc) const;
 };
 
 struct EqCalibration
@@ -269,12 +270,14 @@ public:
 	static void alignNStars(const int N,
 			const LocalEquatorialCoordinates star_ref[],
 			const MountCoordinates star_meas[], const LocationCoordinates &loc,
-			AzimuthalCoordinates &pa, IndexOffset &offset, double &cone, bool &diverge);
+			AzimuthalCoordinates &pa, IndexOffset &offset, double &cone,
+			bool &diverge);
 
 	/**
 	 * Adaptor for EqMount
 	 */
-	static EqCalibration align(const int N, const AlignmentStar stars[], const LocationCoordinates &loc, bool &diverge);
+	static EqCalibration align(const int N, const AlignmentStar stars[],
+			const LocationCoordinates &loc, bool &diverge);
 
 	/*Utility functions*/
 
@@ -283,8 +286,13 @@ public:
 	 */
 	static double parseHMSAngle(char *hms);
 
-
 	static double parseDMSAngle(char *dms);
+
+	/**
+	 * Calculate King tracking rate based on the star position and location
+	 */
+	static double kingRate(EquatorialCoordinates eq, LocationCoordinates loc,
+			time_t time);
 
 };
 

@@ -97,9 +97,8 @@ static const ConfigItem default_config[] =
 						{ .ddata = 0 }, .max =
 						{ .ddata = 100 } },
 				{ .config = "correction_speed_sidereal", .name =
-						"Default correction speed",
-						.help =
-								"Correction speed in multiple of sidereal rate.",
+						"Default correction speed", .help =
+						"Correction speed in multiple of sidereal rate.",
 						.type = DATATYPE_DOUBLE, .value =
 						{ .ddata = 32 }, .min =
 						{ .ddata = 0 }, .max =
@@ -111,13 +110,12 @@ static const ConfigItem default_config[] =
 						{ .ddata = 0.5 }, .min =
 						{ .ddata = 0 }, .max =
 						{ .ddata = 100 } },
-				{ .config = "acceleration", .name =
-						"Acceleration", .help =
-						"Acceleration in deg/s^2.", .type =
-						DATATYPE_DOUBLE, .value =
-				{ .ddata = 2 }, .min =
-				{ .ddata = 0.01 }, .max =
-				{ .ddata = 1000 } },
+				{ .config = "acceleration", .name = "Acceleration", .help =
+						"Acceleration in deg/s^2.", .type = DATATYPE_DOUBLE,
+						.value =
+						{ .ddata = 2 }, .min =
+						{ .ddata = 0.01 }, .max =
+						{ .ddata = 1000 } },
 				{ .config = "max_speed", .name = "Max slewing speed", .help =
 						"Max slewing speed. Reduce this value if losing steps.",
 						.type = DATATYPE_DOUBLE, .value =
@@ -177,16 +175,19 @@ int TelescopeConfiguration::eqmount_config(EqMountServer *server,
 	char buf[256];
 	if (argn == 0)
 	{
-		// Print all configurations
+		// Print all config names
 		ConfigNode *p = instance.head;
+		stprintf(server->getStream(), "%s", cmd);
 		for (; p; p = p->next)
 		{
+			stprintf(server->getStream(), " %s", p->config->config);
 			// Get string representing the value
-			getStringFromConfig(p->config, buf, sizeof(buf));
-			stprintf(server->getStream(), "%s %s,%s,%s,%s\r\n", cmd,
-					p->config->config, p->config->name,
-					typeName(p->config->type), buf);
+//			getStringFromConfig(p->config, buf, sizeof(buf));
+//			stprintf(server->getStream(), "%s %s,%s,%s,%s\r\n", cmd,
+//					p->config->config, p->config->name,
+//					typeName(p->config->type), buf);
 		}
+		stprintf(server->getStream(), "\r\n");
 	}
 	else
 	{
@@ -218,8 +219,22 @@ int TelescopeConfiguration::eqmount_config(EqMountServer *server,
 			}
 			else if (strcmp(argv[1], "help") == 0)
 			{
-				// Print name
+				// Print help
 				stprintf(server->getStream(), "%s %s\r\n", cmd, config->help);
+			}
+			else if (strcmp(argv[1], "type") == 0)
+			{
+				// Print type
+				stprintf(server->getStream(), "%s %s\r\n", cmd,
+						typeName(config->type));
+			}
+			else if (strcmp(argv[1], "info") == 0)
+			{
+				// Print type, value, name and help
+				getStringFromConfig(config, buf, sizeof(buf));
+				stprintf(server->getStream(), "%s %s,%s,%s,%s\r\n", cmd,
+						typeName(config->type), buf, config->name,
+						config->help);
 			}
 			else if (strcmp(argv[1], "limit") == 0)
 			{
@@ -243,7 +258,9 @@ int TelescopeConfiguration::eqmount_config(EqMountServer *server,
 				}
 				else
 				{
-					stprintf(server->getStream(), "%s limit not supported for %s.\r\n", cmd, config->config);
+					stprintf(server->getStream(),
+							"%s limit not supported for %s.\r\n", cmd,
+							config->config);
 				}
 			}
 			else

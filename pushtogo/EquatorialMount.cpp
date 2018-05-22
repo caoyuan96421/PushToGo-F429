@@ -12,8 +12,6 @@ EquatorialMount::EquatorialMount(Axis& ra, Axis& dec, UTCClock& clk,
 	south = loc.lat < 0.0;
 	// Get initial transformation
 	calibration.pa = AzimuthalCoordinates(loc.lat, 0);
-	CelestialMath::getMisalignedPolarAxisTransformation(pa_trans,
-			calibration.pa, location);
 	// Set RA and DEC positions to zero
 	ra.setAngleDeg(0);
 	dec.setAngleDeg(0);
@@ -34,12 +32,19 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 
 	debug_if(EM_DEBUG, "dest ra=%.2f, dec=%.2f\n", dest.ra, dest.dec);
 
+	updatePosition(); // Get the latest position information
+
+	if (EM_DEBUG)
+		printPosition();
+
 	for (int i = 0; i < 2; i++)
 	{
 		LocalEquatorialCoordinates dest_local =
 				CelestialMath::equatorialToLocalEquatorial(dest,
 						clock.getTime(), location);
 		// Apply PA misalignment
+		CelestialMath::getMisalignedPolarAxisTransformation(pa_trans,
+				calibration.pa, location);
 		dest_local = CelestialMath::applyMisalignment(pa_trans, dest_local);
 		// Apply Cone error
 		dest_local = CelestialMath::applyConeError(dest_local,
@@ -52,6 +57,9 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 		if (s != osOK)
 			return s;
 	}
+
+	if (EM_DEBUG)
+		printPosition();
 
 	return osOK;
 }
@@ -75,11 +83,6 @@ bool withCorrection)
 	debug_if(EM_DEBUG, "EM: goTo\n");
 	debug_if(EM_DEBUG, "dstmnt ra=%.2f, dec=%.2f\n", dest_mount.ra_delta,
 			dest_mount.dec_delta);
-
-	updatePosition(); // Get the latest position information
-
-	if (EM_DEBUG)
-		printPosition();
 
 	axisrotdir_t dec_dir, ra_dir;
 	ra_dir =
@@ -111,9 +114,6 @@ bool withCorrection)
 	}
 
 	updatePosition(); // Update current position
-
-	if (EM_DEBUG)
-		printPosition();
 
 	if (ret)
 	{
@@ -380,6 +380,9 @@ void EquatorialMount::updatePosition()
 	// Lock the mutex to avoid race condition on the current position values
 	mutex_update.lock();
 	curr_pos = MountCoordinates(dec.getAngleDeg(), ra.getAngleDeg());
+	// Update location
+	location.lat = TelescopeConfiguration::getDouble("latitude");
+	location.lon = TelescopeConfiguration::getDouble("longitude");
 
 	// Determine the side of pier based on (offset) DEC axis pointing direction
 	MountCoordinates curr_pos_off = curr_pos - calibration.offset; // mount position with index offset corrected (in principle)
@@ -395,6 +398,8 @@ void EquatorialMount::updatePosition()
 	}
 
 	// Convert back from MountCoordinates to equatorial coordinates
+	CelestialMath::getMisalignedPolarAxisTransformation(pa_trans,
+			calibration.pa, location);
 	LocalEquatorialCoordinates pos_local =
 			CelestialMath::mountToLocalEquatorial(curr_pos_off);
 	pos_local = CelestialMath::deapplyConeError(pos_local, calibration.cone);
