@@ -38,7 +38,7 @@ EqMountServer::~EqMountServer()
 
 void EqMountServer::task_thread()
 {
-	EventQueue queue(4 * EVENTS_EVENT_SIZE);
+	EventQueue queue(16 * EVENTS_EVENT_SIZE);
 	Thread evq_thd(osThreadGetPriority(Thread::gettid()), OS_STACK_SIZE, NULL,
 			"EqMountServer dispatcher");
 	evq_thd.start(callback(&queue, &EventQueue::dispatch_forever));
@@ -171,7 +171,7 @@ void EqMountServer::task_thread()
 		}
 
 		// Commands that can return immediately, directly run them
-		if (cind < 4)
+		if (cind < 8 || strcmp(command, "config") == 0)
 		{
 			int ret = commandlist[cind].fptr(this, command, argn, args);
 			// Send the return status back
@@ -402,16 +402,18 @@ static int eqmount_align(EqMountServer *server, const char *cmd, int argn,
 	if (argn == 0)
 	{
 		stprintf(server->getStream(),
-				"%s usage: align add [star]\nalign del [n]\nalign show\nalign show [n]\nalign replace [n] [star]\nalign clear\n",
+				"%s usage: align add [star]\nalign replace [n] [star]\nalign delete [n]\nalign show\nalign show [n]\n\nalign clear\n",
 				cmd);
 		return ERR_WRONG_NUM_PARAM;
 	}
 	if (strcmp(argv[0], "add") == 0)
 	{
-		if (argn != 3)
+		AlignmentStar as;
+		if (argn != 3 && argn != 5)
 		{
 			stprintf(server->getStream(),
-					"%s usage: align add {ref_ra} {ref_dec}\n", cmd);
+					"%s usage: align add {ref_ra} {ref_dec}\n%s usage: align add {ref_ra} {ref_dec} {meas_ra} {meas_dec}\n",
+					cmd, cmd);
 			return ERR_WRONG_NUM_PARAM;
 		}
 		char *tp;
@@ -425,58 +427,141 @@ static int eqmount_align(EqMountServer *server, const char *cmd, int argn,
 		{
 			return ERR_PARAM_OUT_OF_RANGE;
 		}
-		AlignmentStar as;
 		as.star_ref = EquatorialCoordinates(ref_dec, ref_ra);
-		as.star_meas = server->getEqMount()->getMountCoordinates();
+		if (argn == 5)
+		{
+			double meas_ra = strtod(argv[3], &tp);
+			if (tp == argv[3])
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+			double meas_dec = strtod(argv[4], &tp);
+			if (tp == argv[4])
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+			as.star_meas = MountCoordinates(meas_dec, meas_ra);
+		}
+		else
+			as.star_meas = server->getEqMount()->getMountCoordinates();
 		as.timestamp = server->getEqMount()->getClock().getTime();
-		server->getEqMount()->addAlignmentStar(as);
+		return server->getEqMount()->addAlignmentStar(as);
+	}
+	else if (strcmp(argv[0], "replace") == 0)
+	{
+		AlignmentStar as;
+		if (argn != 4 && argn != 6)
+		{
+			stprintf(server->getStream(),
+					"%s usage: align replace [index] {ref_ra} {ref_dec}\n%s usage: align replace [index] {ref_ra} {ref_dec} {meas_ra} {meas_dec}\n",
+					cmd, cmd);
+			return ERR_WRONG_NUM_PARAM;
+		}
+		char *tp;
+
+		int index = strtol(argv[1], &tp, 10);
+		if (tp == argv[1])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+
+		double ref_ra = strtod(argv[2], &tp);
+		if (tp == argv[2])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		double ref_dec = strtod(argv[3], &tp);
+		if (tp == argv[3])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		as.star_ref = EquatorialCoordinates(ref_dec, ref_ra);
+		if (argn == 6)
+		{
+			double meas_ra = strtod(argv[4], &tp);
+			if (tp == argv[4])
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+			double meas_dec = strtod(argv[5], &tp);
+			if (tp == argv[5])
+			{
+				return ERR_PARAM_OUT_OF_RANGE;
+			}
+			as.star_meas = MountCoordinates(meas_dec, meas_ra);
+		}
+		else
+			as.star_meas = server->getEqMount()->getMountCoordinates();
+		as.timestamp = server->getEqMount()->getClock().getTime();
+		return server->getEqMount()->replaceAlignmentStar(index, as);
+	}
+	else if (strcmp(argv[0], "delete") == 0)
+	{
+		char *tp;
+		int n = strtol(argv[1], &tp, 10);
+		if (tp == argv[1] || n >= server->getEqMount()->getNumAlignmentStar()
+				|| n < 0)
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		if (server->getEqMount()->getNumAlignmentStar() > 1)
+			return server->getEqMount()->removeAlignmentStar(n);
+		else
+			server->getEqMount()->clearCalibration();
 	}
 	else if (strcmp(argv[0], "show") == 0)
 	{
 		if (argn == 1)
 		{
 			// Show all alignment stars
-			int N = server->getEqMount()->getNumAlignmentStar();
-			if (N == 0)
-			{
-				stprintf(server->getStream(), "%s no alignment star\n", cmd);
-			}
-			else
-			{
-				for (int i = 0; i < N; i++)
-				{
-					AlignmentStar *as = server->getEqMount()->getAlignmentStar(
-							i);
-					stprintf(server->getStream(),
-							"%s star %d\n  REF: RA=%.8f, DEC=%.8f MEAS: RA=%.8f, DEC=%.8f %c\n",
-							cmd, i + 1, as->star_ref.ra, as->star_ref.dec,
-							as->star_meas.ra_delta, as->star_meas.dec_delta,
-							(as->star_meas.side == PIER_SIDE_WEST) ? 'W' : 'E');
-				}
-				stprintf(server->getStream(), "%s offset: RA=%.8f, DEC=%.8f\n",
-						cmd,
-						server->getEqMount()->getCalibration().offset.ra_off,
-						server->getEqMount()->getCalibration().offset.dec_off);
-				stprintf(server->getStream(), "%s polar: ALT=%.8f, AZ=%.8f\n",
-						cmd, server->getEqMount()->getCalibration().pa.alt,
-						server->getEqMount()->getCalibration().pa.azi);
-				stprintf(server->getStream(), "%s cone: %.8f\n", cmd,
-						server->getEqMount()->getCalibration().cone);
-			}
+//			int N = server->getEqMount()->getNumAlignmentStar();
+//			for (int i = 0; i < N; i++)
+//			{
+//				AlignmentStar *as = server->getEqMount()->getAlignmentStar(i);
+//				stprintf(server->getStream(), "%s %d %.8f %.8f %.8f %.8f %d\n",
+//						cmd, i, as->star_ref.ra, as->star_ref.dec,
+//						as->star_meas.ra_delta, as->star_meas.dec_delta,
+//						as->timestamp);
+//			}
+			stprintf(server->getStream(), "%s offset %.8f %.8f\n", cmd,
+					server->getEqMount()->getCalibration().offset.ra_off,
+					server->getEqMount()->getCalibration().offset.dec_off);
+			stprintf(server->getStream(), "%s pa %.8f %.8f\n", cmd,
+					server->getEqMount()->getCalibration().pa.alt,
+					server->getEqMount()->getCalibration().pa.azi);
+			stprintf(server->getStream(), "%s cone %.8f\n", cmd,
+					server->getEqMount()->getCalibration().cone);
+			stprintf(server->getStream(), "%s error %g\n", cmd,
+					server->getEqMount()->getCalibration().error);
 		}
 		else if (argn == 2)
 		{
-			int index = strtol(argv[1], NULL, 0);
-			AlignmentStar *as = server->getEqMount()->getAlignmentStar(index);
-			if (!as)
+			if (strcmp(argv[1], "num") == 0)
 			{
-				return ERR_PARAM_OUT_OF_RANGE;
+				stprintf(server->getStream(), "%s %d\n", cmd,
+						server->getEqMount()->getNumAlignmentStar());
 			}
-			stprintf(server->getStream(),
-					"%s REF: RA=%.8f, DEC=%.8f MEAS: RA=%.8f, DEC=%.8f %c\n",
-					cmd, as->star_ref.ra, as->star_ref.dec,
-					as->star_meas.ra_delta, as->star_meas.dec_delta,
-					(as->star_meas.side == PIER_SIDE_WEST) ? 'W' : 'E');
+			else
+			{
+				char *tp;
+				int index = strtol(argv[1], &tp, 0);
+				if (tp == argv[1]
+						|| index >= server->getEqMount()->getNumAlignmentStar()
+						|| index < 0)
+				{
+					return ERR_PARAM_OUT_OF_RANGE;
+				}
+				AlignmentStar *as = server->getEqMount()->getAlignmentStar(
+						index);
+				if (!as)
+				{
+					return ERR_PARAM_OUT_OF_RANGE;
+				}
+				stprintf(server->getStream(), "%s %.8f %.8f %.8f %.8f %d\n",
+						cmd, as->star_ref.ra, as->star_ref.dec,
+						as->star_meas.ra_delta, as->star_meas.dec_delta,
+						as->timestamp);
+			}
 		}
 		else
 		{
@@ -490,6 +575,47 @@ static int eqmount_align(EqMountServer *server, const char *cmd, int argn,
 			return ERR_WRONG_NUM_PARAM;
 		}
 		server->getEqMount()->clearCalibration();
+	}
+	else if (strcmp(argv[0], "convert") == 0)
+	{
+		if (argn != 4)
+		{
+			return ERR_WRONG_NUM_PARAM;
+		}
+		char *tp;
+		double ra = strtod(argv[2], &tp);
+		if (tp == argv[2])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		double dec = strtod(argv[3], &tp);
+		if (tp == argv[3])
+		{
+			return ERR_PARAM_OUT_OF_RANGE;
+		}
+		if (strcmp(argv[1], "mount") == 0)
+		{
+			// Convert to eq
+			EquatorialCoordinates eq =
+					server->getEqMount()->convertToEqCoordinates(
+							MountCoordinates(dec, ra));
+			stprintf(server->getStream(), "%s %.8f %.8f\n", cmd, eq.ra, eq.dec);
+		}
+		else if (strcmp(argv[1], "eq") == 0)
+		{
+			// Convert to eq
+			MountCoordinates mc =
+					server->getEqMount()->convertToMountCoordinates(
+							EquatorialCoordinates(dec, ra));
+			stprintf(server->getStream(), "%s %.8f %.8f\n", cmd, mc.ra_delta,
+					mc.dec_delta);
+		}
+		else
+			return ERR_PARAM_OUT_OF_RANGE;
+	}
+	else
+	{
+		return ERR_PARAM_OUT_OF_RANGE;
 	}
 	return 0;
 }
@@ -680,7 +806,7 @@ static int eqmount_time(EqMountServer *server, const char *cmd, int argn,
 		char *argv[])
 {
 	char buf[32];
-	//Get time
+//Get time
 	time_t t = server->getEqMount()->getClock().getTime();
 
 	if (argn >= 2)
@@ -726,7 +852,7 @@ static int eqmount_time(EqMountServer *server, const char *cmd, int argn,
 
 	}
 
-	// Print of formatted string of current time
+// Print of formatted string of current time
 	ctime_r(&t, buf);
 	stprintf(server->getStream(), "%s %s\r\n", cmd, buf);
 
@@ -796,11 +922,14 @@ void EqMountServer::addCommand(const ServerCommand& cmd)
 
 ServerCommand commandlist[MAX_COMMAND] =
 { /// List of all commands
-		ServerCommand("stop", "Stop mount motion", eqmount_stop), 		/// Stop
+		ServerCommand("stop", "Stop mount motion", eqmount_stop), 	/// Stop
 		ServerCommand("estop", "Emergency stop", eqmount_estop), /// Emergency Stop
 		ServerCommand("read", "Read current RA/DEC position", eqmount_read), /// Read Position
 		ServerCommand("time", "Get and set system time", eqmount_time), /// System time
-		ServerCommand("status", "Get the mount state", eqmount_state), /// System time
+		ServerCommand("status", "Get the mount state", eqmount_state), /// System state
+		ServerCommand("help", "Print this help menu", eqmount_help), /// Help menu
+		ServerCommand("speed", "Set slew and tracking speed", eqmount_speed), /// Set speed
+		ServerCommand("align", "Star alignment", eqmount_align), /// Alignment
 		/// Above are allowed commands when another command is running
 
 				ServerCommand("goto",
@@ -812,10 +941,6 @@ ServerCommand commandlist[MAX_COMMAND] =
 						eqmount_track), 		/// Track
 				ServerCommand("guide", "Guide on specified direction",
 						eqmount_guide), /// Guide
-				ServerCommand("speed", "Set slew and tracking speed",
-						eqmount_speed), /// Set speed
-				ServerCommand("align", "Star alignment", eqmount_align), /// Alignment
-				ServerCommand("help", "Print this help menu", eqmount_help), /// Help menu
 				ServerCommand("settime", "Set system time", eqmount_settime), /// System time
 				ServerCommand("", "", NULL) };
 

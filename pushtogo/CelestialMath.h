@@ -118,16 +118,16 @@ struct MountCoordinates
 	double ra_delta;  // Displacement from index position in RA/HA axis
 	pierside_t side;
 	MountCoordinates(double dec = 0, double ra = 0, pierside_t s =
-			PIER_SIDE_EAST) :
+			PIER_SIDE_AUTO) :
 			dec_delta(dec), ra_delta(ra), side(s)
 	{
 	}
-	MountCoordinates operator+(const IndexOffset offset)
+	MountCoordinates operator+(const IndexOffset &offset) const
 	{
 		return MountCoordinates(remainder(dec_delta + offset.dec_off, 360),
 				remainder(ra_delta + offset.ra_off, 360), side);
 	}
-	MountCoordinates operator-(const IndexOffset offset)
+	MountCoordinates operator-(const IndexOffset &offset) const
 	{
 		return MountCoordinates(remainder(dec_delta - offset.dec_off, 360),
 				remainder(ra_delta - offset.ra_off, 360), side);
@@ -159,13 +159,14 @@ struct EqCalibration
 	IndexOffset offset;
 	AzimuthalCoordinates pa;
 	double cone;
+	double error;
 	EqCalibration() :
-			cone(0)
+			cone(0), error(0)
 	{
 	}
 	EqCalibration(const IndexOffset &off, const AzimuthalCoordinates p,
-			double c) :
-			offset(off), pa(p), cone(c)
+			double c, double e) :
+			offset(off), pa(p), cone(c), error(e)
 	{
 	}
 };
@@ -204,10 +205,16 @@ public:
 			const LocationCoordinates &loc);
 	static LocalEquatorialCoordinates applyMisalignment(const Transformation &t,
 			const LocalEquatorialCoordinates &a);
+	static LocalEquatorialCoordinates applyMisalignment(
+			const LocalEquatorialCoordinates &a,
+			const AzimuthalCoordinates &mpa, const LocationCoordinates &loc);
 	static LocalEquatorialCoordinates applyConeError(
 			const LocalEquatorialCoordinates &a, double cone);
 	static LocalEquatorialCoordinates deapplyMisalignment(
 			const Transformation &t, const LocalEquatorialCoordinates &a);
+	static LocalEquatorialCoordinates deapplyMisalignment(
+			const LocalEquatorialCoordinates &a,
+			const AzimuthalCoordinates &mpa, const LocationCoordinates &loc);
 	static LocalEquatorialCoordinates deapplyConeError(
 			const LocalEquatorialCoordinates &a, double cone);
 
@@ -278,6 +285,9 @@ public:
 	 */
 	static EqCalibration align(const int N, const AlignmentStar stars[],
 			const LocationCoordinates &loc, bool &diverge);
+
+	static double alignmentError(const int N, const AlignmentStar stars[],
+			const EqCalibration &calib, const LocationCoordinates &loc);
 
 	/*Utility functions*/
 

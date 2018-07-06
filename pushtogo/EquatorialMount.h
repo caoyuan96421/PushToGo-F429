@@ -59,10 +59,6 @@ protected:
 	double nudgeSpeed;
 
 	pierside_t pier_side;      /// Side of pier. 1: East
-	//IndexOffset offset; /// Offset in DEC and RA(HA) axis index position
-	//AzimuthalCoordinates pa;    /// Alt-azi coordinate of the actual polar axis
-	Transformation pa_trans;
-	//double cone_value; /// Non-orthogonality between the two axis, or cone value.
 	EqCalibration calibration;
 	AlignmentStar alignment_stars[MAX_AS_N];
 	int num_alignment_stars;
@@ -171,6 +167,31 @@ public:
 		}
 		alignment_stars[index] = as;
 		return recalibrate();
+	}
+
+	/*Utility functions to convert between coordinate systems*/
+	MountCoordinates convertToMountCoordinates(const EquatorialCoordinates &eq)
+	{
+		LocalEquatorialCoordinates leq =
+				CelestialMath::equatorialToLocalEquatorial(eq, clock.getTime(),
+						location);
+		// Apply PA misalignment
+		leq = CelestialMath::applyMisalignment(leq, calibration.pa, location);
+		// Apply Cone error
+		leq = CelestialMath::applyConeError(leq, calibration.cone);
+		// Convert to Mount coordinates. Automatically determine the pier side, then apply offset
+		return CelestialMath::localEquatorialToMount(leq, PIER_SIDE_AUTO)
+				+ calibration.offset;
+	}
+
+	EquatorialCoordinates convertToEqCoordinates(const MountCoordinates &mc)
+	{
+		LocalEquatorialCoordinates leq = CelestialMath::mountToLocalEquatorial(
+				mc - calibration.offset);
+		leq = CelestialMath::deapplyConeError(leq, calibration.cone);
+		leq = CelestialMath::deapplyMisalignment(leq, calibration.pa, location);
+		return CelestialMath::localEquatorialToEquatorial(leq, clock.getTime(),
+				location);
 	}
 
 	osStatus recalibrate();

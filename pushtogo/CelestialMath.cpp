@@ -167,6 +167,24 @@ LocalEquatorialCoordinates CelestialMath::deapplyMisalignment(
 			atan2(-X.y, X.x) * RADIAN);
 }
 
+LocalEquatorialCoordinates CelestialMath::applyMisalignment(
+		const LocalEquatorialCoordinates& a, const AzimuthalCoordinates& mpa,
+		const LocationCoordinates& loc)
+{
+	Transformation tr;
+	getMisalignedPolarAxisTransformation(tr, mpa, loc);
+	return applyMisalignment(tr, a);
+}
+
+LocalEquatorialCoordinates CelestialMath::deapplyMisalignment(
+		const LocalEquatorialCoordinates& a, const AzimuthalCoordinates& mpa,
+		const LocationCoordinates& loc)
+{
+	Transformation tr;
+	getMisalignedPolarAxisTransformation(tr, mpa, loc);
+	return deapplyMisalignment(tr, a);
+}
+
 LocalEquatorialCoordinates CelestialMath::applyConeError(
 		const LocalEquatorialCoordinates& a, double cone)
 {
@@ -213,7 +231,8 @@ LocalEquatorialCoordinates CelestialMath::mountToLocalEquatorial(
 		const MountCoordinates& m)
 {
 	LocalEquatorialCoordinates a;
-	if (m.side == PIER_SIDE_WEST)
+	if (m.side == PIER_SIDE_WEST
+			|| (m.side == PIER_SIDE_AUTO && (m.dec_delta > 0)))
 	{
 		a.ha = m.ra_delta + 90.0;
 		a.dec = 90.0 - m.dec_delta;
@@ -883,6 +902,7 @@ EqCalibration CelestialMath::align(const int N, const AlignmentStar stars[],
 					calib.cone, diverge);
 		}
 	}
+	calib.error = CelestialMath::alignmentError(N, stars, calib, loc);
 
 	return calib;
 }
@@ -988,4 +1008,27 @@ double CelestialMath::kingRate(EquatorialCoordinates eq,
 							/ pow(sinLat * sinDec + cosLat * cosDec * cosHA,
 									2.0) - cotLat * tanDec * cosHA));
 	return 6.0 / kingMpD;
+}
+
+double CelestialMath::alignmentError(const int N, const AlignmentStar stars[],
+		const EqCalibration &calib, const LocationCoordinates& loc)
+{
+	static Transformation t;
+	CelestialMath::getMisalignedPolarAxisTransformation(t, calib.pa, loc);
+	double r = 0;
+	for (int i = 0; i < N; i++)
+	{
+		// Misalign, apply cone error, and transform to mount coordinates using the same pier side as in the measured stars
+		MountCoordinates mc = CelestialMath::localEquatorialToMount(
+				CelestialMath::applyConeError(
+						CelestialMath::applyMisalignment(t,
+								CelestialMath::equatorialToLocalEquatorial(
+										stars[i].star_ref, stars[i].timestamp,
+										loc)), calib.cone),
+				stars[i].star_meas.side) + calib.offset;
+
+		r += sqr(mc.ra_delta - stars[i].star_meas.ra_delta)
+				+ sqr(mc.dec_delta - stars[i].star_meas.dec_delta);
+	}
+	return sqrt(r);
 }

@@ -39,19 +39,8 @@ osStatus EquatorialMount::goTo(EquatorialCoordinates dest)
 
 	for (int i = 0; i < 2; i++)
 	{
-		LocalEquatorialCoordinates dest_local =
-				CelestialMath::equatorialToLocalEquatorial(dest,
-						clock.getTime(), location);
-		// Apply PA misalignment
-		CelestialMath::getMisalignedPolarAxisTransformation(pa_trans,
-				calibration.pa, location);
-		dest_local = CelestialMath::applyMisalignment(pa_trans, dest_local);
-		// Apply Cone error
-		dest_local = CelestialMath::applyConeError(dest_local,
-				calibration.cone);
 		// Convert to Mount coordinates. Automatically determine the pier side, then apply offset
-		MountCoordinates dest_mount = CelestialMath::localEquatorialToMount(
-				dest_local, PIER_SIDE_AUTO) + calibration.offset;
+		MountCoordinates dest_mount = convertToMountCoordinates(dest);
 
 		osStatus s = goToMount(dest_mount, (i > 0)); // Use correction only for the second time
 		if (s != osOK)
@@ -383,29 +372,8 @@ void EquatorialMount::updatePosition()
 	// Update location
 	location.lat = TelescopeConfiguration::getDouble("latitude");
 	location.lon = TelescopeConfiguration::getDouble("longitude");
-
-	// Determine the side of pier based on (offset) DEC axis pointing direction
-	MountCoordinates curr_pos_off = curr_pos - calibration.offset; // mount position with index offset corrected (in principle)
-	if (curr_pos_off.dec_delta > 0)
-	{
-		curr_pos.side = PIER_SIDE_WEST;
-		curr_pos_off.side = PIER_SIDE_WEST;
-	}
-	else
-	{
-		curr_pos.side = PIER_SIDE_EAST;
-		curr_pos_off.side = PIER_SIDE_EAST;
-	}
-
-	// Convert back from MountCoordinates to equatorial coordinates
-	CelestialMath::getMisalignedPolarAxisTransformation(pa_trans,
-			calibration.pa, location);
-	LocalEquatorialCoordinates pos_local =
-			CelestialMath::mountToLocalEquatorial(curr_pos_off);
-	pos_local = CelestialMath::deapplyConeError(pos_local, calibration.cone);
-	pos_local = CelestialMath::deapplyMisalignment(pa_trans, pos_local);
-	curr_pos_eq = CelestialMath::localEquatorialToEquatorial(pos_local,
-			clock.getTime(), location);
+	// Update Eq coordinates
+	curr_pos_eq = this->convertToEqCoordinates(curr_pos);
 	mutex_update.unlock();
 }
 
@@ -484,24 +452,24 @@ osStatus EquatorialMount::guide(guidedir_t dir, int ms)
 
 void EquatorialMount::setSlewSpeed(double rate)
 {
-	mutex_execution.lock();
+//	mutex_execution.lock();
 	ra.setSlewSpeed(rate);
 	dec.setSlewSpeed(rate);
-	mutex_execution.unlock();
+//	mutex_execution.unlock();
 }
 
 void EquatorialMount::setTrackSpeedSidereal(double rate)
 {
-	mutex_execution.lock();
+//	mutex_execution.lock();
 	ra.setTrackSpeedSidereal(rate);
-	mutex_execution.unlock();
+//	mutex_execution.unlock();
 }
 
 void EquatorialMount::setGuideSpeedSidereal(double rate)
 {
-	mutex_execution.lock();
+//	mutex_execution.lock();
 	ra.setGuideSpeedSidereal(rate);
 	dec.setGuideSpeedSidereal(rate);
-	mutex_execution.unlock();
+//	mutex_execution.unlock();
 }
 
