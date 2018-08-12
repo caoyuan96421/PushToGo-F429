@@ -170,7 +170,7 @@ osStatus EquatorialMount::startNudge(nudgedir_t newdir)
 		{
 			// Initial nudge
 			curr_nudge_dir = NUDGE_NONE; //Make sure the current nudging direction is cleared
-			nudgeSpeed = ra.getSlewSpeed(); // Get nudge speed and use it for ALL following nudge operations, until the nudge finishes
+			nudgeSpeed = getSlewSpeed(); // Get nudge speed and use it for ALL following nudge operations, until the nudge finishes
 		}
 		// see what has changed in RA
 		if ((curr_nudge_dir & (NUDGE_WEST | NUDGE_EAST))
@@ -332,7 +332,7 @@ osStatus EquatorialMount::stopNudge()
 
 double EquatorialMount::getSlewSpeed()
 {
-	return ra.getSlewSpeed();
+	return dec.getSlewSpeed(); // Fix: RA speed changes if using NUDGE_TRACKING mode
 }
 
 double EquatorialMount::getTrackSpeedSidereal()
@@ -455,6 +455,7 @@ void EquatorialMount::setSlewSpeed(double rate)
 //	mutex_execution.lock();
 	ra.setSlewSpeed(rate);
 	dec.setSlewSpeed(rate);
+	nudgeSpeed = rate; // If this happens during nudging, this is necessary to keep the nudging speed correct
 //	mutex_execution.unlock();
 }
 

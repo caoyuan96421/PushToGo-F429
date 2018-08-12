@@ -37,6 +37,7 @@ Axis::Axis(double stepsPerDeg, StepperMotor *stepper, const char *name) :
 	task_thread = new Thread(osPriorityAboveNormal,
 	OS_STACK_SIZE, NULL, taskName);
 	task_thread->start(callback(this, &Axis::task));
+	tim.start();
 }
 
 Axis::~Axis()
@@ -149,7 +150,8 @@ bool useCorrection)
 	}
 
 	slew_mode(); // Switch to slew mode
-	Thread::signal_clr(AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL); // Clear flags
+	Thread::signal_clr(
+	AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL | AXIS_SPEEDCHANGE_SIGNAL); // Clear flags
 	bool isInertial = (status == AXIS_INERTIAL);
 	status = AXIS_SLEWING;
 	slewState = AXIS_NOT_SLEWING;
@@ -289,20 +291,88 @@ bool useCorrection)
 		debug_if(AXIS_DEBUG, "%s: wait for %f\n", axisName, waitTime); // TODO
 		wait_ms = (isinf(waitTime)) ? osWaitForever : (int) (waitTime * 1000);
 
-		flags = osThreadFlagsWait(
-		AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL, osFlagsWaitAny, wait_ms); /*Wait the remaining time*/
-		if (flags != osFlagsErrorTimeout)
-		{	// We're stopped!
-			useCorrection = false;
-			if (flags & AXIS_EMERGE_STOP_SIGNAL)
+		tim.reset();
+
+		while (wait_ms)
+		{
+			flags = osThreadFlagsWait(
+					AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL
+							| (indefinite ? AXIS_SPEEDCHANGE_SIGNAL : 0),
+					osFlagsWaitAny, wait_ms); /*Wait the remaining time*/
+			if (flags != osFlagsErrorTimeout)
 			{
-				slew_finish_state = FINISH_EMERG_STOPPED;
-				goto emerge_stop;
+				if (flags & AXIS_EMERGE_STOP_SIGNAL)
+				{
+					slew_finish_state = FINISH_EMERG_STOPPED;
+					useCorrection = false;
+					goto emerge_stop;
+				}
+				else if (flags & AXIS_STOP_SIGNAL)
+				{
+					slew_finish_state = FINISH_STOPPED;
+					useCorrection = false;
+					goto stop;
+				}
+				else if (flags & AXIS_SPEEDCHANGE_SIGNAL)
+				{
+					// Change speed, therefore also changing waittime. Only applies to indefinite slew
+					double newSpeed = slewSpeed;
+					startSpeed = currentSpeed;
+					endSpeed = newSpeed;
+
+					ramp_steps = (unsigned int) (fabs(endSpeed - startSpeed)
+							/ (TelescopeConfiguration::getInt(
+									"acceleration_step_time") / 1000.0)
+							/ acceleration);
+
+					if (ramp_steps < 1)
+						ramp_steps = 1;
+
+					debug_if(AXIS_DEBUG, "%s: accelerate in %d steps\n",
+							axisName, ramp_steps); // TODO: DEBUG
+
+					for (unsigned int i = 1; i <= ramp_steps; i++)
+					{
+						currentSpeed = stepper->setFrequency(
+								stepsPerDeg
+										* ((endSpeed - startSpeed) / ramp_steps
+												* i + startSpeed))
+								/ stepsPerDeg; // Set and update currentSpeed with actual speed
+
+						/*Monitor whether there is a stop/emerge stop signal*/
+						uint32_t flags = osThreadFlagsWait(
+						AXIS_STOP_SIGNAL | AXIS_EMERGE_STOP_SIGNAL,
+						osFlagsWaitAny,
+								TelescopeConfiguration::getInt(
+										"acceleration_step_time"));
+
+						if (flags == osFlagsErrorTimeout)
+						{
+							/*Nothing happened, we're good*/
+							continue;
+						}
+						else if ((flags & osFlagsError) == 0)
+						{
+							// We're stopped!
+							useCorrection = false;
+							if (flags & AXIS_EMERGE_STOP_SIGNAL)
+							{
+								slew_finish_state = FINISH_EMERG_STOPPED;
+								goto emerge_stop;
+							}
+							else if (flags & AXIS_STOP_SIGNAL)
+							{
+								slew_finish_state = FINISH_STOPPED;
+								goto stop;
+							}
+						}
+					}
+				}
 			}
-			else
+			if (!indefinite)
 			{
-				slew_finish_state = FINISH_STOPPED;
-				// Normal stop will be handled automatically
+				wait_ms -= tim.read_ms();
+				tim.reset();
 			}
 		}
 

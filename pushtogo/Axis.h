@@ -16,11 +16,12 @@ class Axis;
 #include "CelestialMath.h"
 #include "TelescopeConfiguration.h"
 
-//#define AXIS_SLEW_SIGNAL			0x00010000
-#define AXIS_GUIDE_SIGNAL			0x00020000
-#define AXIS_STOP_SIGNAL			0x00040000
-#define AXIS_EMERGE_STOP_SIGNAL		0x00080000
+//#define AXIS_SLEW_SIGNAL				0x00010000
+#define AXIS_GUIDE_SIGNAL				0x00020000
+#define AXIS_STOP_SIGNAL				0x00040000
+#define AXIS_EMERGE_STOP_SIGNAL			0x00080000
 #define AXIS_STOP_KEEPSPEED_SIGNAL		0x00100000
+#define AXIS_SPEEDCHANGE_SIGNAL			0x00200000
 
 /**
  * status of the Axis object
@@ -281,12 +282,13 @@ public:
 	}
 
 	/** @param new slew speed in deg/s
-	 * @note Must be called only when the axis is stopped
 	 */
 	void setSlewSpeed(double slewSpeed)
 	{
 		if (slewSpeed > 0)
 			this->slewSpeed = slewSpeed;
+
+		task_thread->signal_set(AXIS_SPEEDCHANGE_SIGNAL); // Signal the thread to use the new speed during a slew
 	}
 
 	double getTrackSpeedSidereal() const
@@ -366,6 +368,7 @@ protected:
 	MemoryPool<msg_t, 16> task_pool; ///MemoryPool for allocating messages
 	Semaphore slew_finish_sem;
 	volatile finishstate_t slew_finish_state;
+	Timer tim;
 
 	void task();
 
