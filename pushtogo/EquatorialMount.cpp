@@ -77,11 +77,17 @@ bool withCorrection)
 	ra_dir =
 			(remainder(dest_mount.ra_delta, 360.0)
 					> remainder(curr_pos.ra_delta, 360.0)) ?
-					AXIS_ROTATE_POSITIVE : AXIS_ROTATE_NEGATIVE;
+					AXIS_ROTATE_POSITIVE :
+			(remainder(dest_mount.ra_delta, 360.0)
+					< remainder(curr_pos.ra_delta, 360.0)) ?
+					AXIS_ROTATE_NEGATIVE : AXIS_ROTATE_STOP;
 	dec_dir =
 			(remainder(dest_mount.dec_delta, 360.0)
 					> remainder(curr_pos.dec_delta, 360.0)) ?
-					AXIS_ROTATE_POSITIVE : AXIS_ROTATE_NEGATIVE;
+					AXIS_ROTATE_POSITIVE :
+			(remainder(dest_mount.dec_delta, 360.0)
+					< remainder(curr_pos.dec_delta, 360.0)) ?
+					AXIS_ROTATE_NEGATIVE : AXIS_ROTATE_STOP;
 
 	debug_if(EM_DEBUG, "EM: start slewing\n");
 	status = MOUNT_SLEWING;

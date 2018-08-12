@@ -7,7 +7,7 @@
 
 #include <Axis.h>
 
-#define AXIS_DEBUG 0
+#define AXIS_DEBUG 1
 
 static inline double min(double x, double y)
 {
@@ -146,7 +146,8 @@ bool useCorrection)
 	}
 	if (dir == AXIS_ROTATE_STOP)
 	{
-		debug("%s: invalid direction.\n", axisName);
+		debug("%s: skipped.\n", axisName);
+		return;
 	}
 
 	slew_mode(); // Switch to slew mode
@@ -164,7 +165,13 @@ bool useCorrection)
 	double angleDeg = getAngleDeg();
 	double delta;
 	delta = (dest - angleDeg) * (dir == AXIS_ROTATE_POSITIVE ? 1 : -1); /*delta is the actual angle to rotate*/
+	if (fabs(delta) < 1e-5)
+	{ // FIX: delta 0->360degrees when angleDeg is essentially equal to dest
+		delta = 0;
+	}
 	delta = remainder(delta - 180.0, 360.0) + 180.0; /*Shift to 0-360 deg*/
+	debug_if(AXIS_DEBUG, "%s: start=%f, end=%f, delta=%f\n", axisName, angleDeg,
+			dest, delta);
 
 	double startSpeed = 0;
 	double endSpeed = slewSpeed, waitTime;
